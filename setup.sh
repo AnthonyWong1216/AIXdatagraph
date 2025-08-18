@@ -51,7 +51,7 @@ if command -v docker &> /dev/null; then
     print_status "Docker is already installed"
 else
     print_status "Installing Docker..."
-    sudo dnf install -y docker docker-compose
+    sudo dnf install -y docker
     sudo systemctl enable docker
     sudo systemctl start docker
     sudo usermod -aG docker $USER
@@ -102,8 +102,17 @@ fi
 
 # Set permissions
 print_status "Setting permissions..."
-chmod +x scripts/*.py
-chmod +x scripts/*.sh
+if ls scripts/*.py 1> /dev/null 2>&1; then
+    chmod +x scripts/*.py
+else
+    print_warning "No Python scripts found in the scripts directory"
+fi
+
+if ls scripts/*.sh 1> /dev/null 2>&1; then
+    chmod +x scripts/*.sh
+else
+    print_warning "No shell scripts found in the scripts directory"
+fi
 
 # Create configuration file if it doesn't exist
 if [ ! -f "config/config.yaml" ]; then
