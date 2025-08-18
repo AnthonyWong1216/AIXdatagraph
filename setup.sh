@@ -91,7 +91,7 @@ if [ -d "docker" ]; then
     cd docker
     if [ -f "docker-compose.yml" ]; then
         print_status "Starting Grafana with Docker Compose..."
-        docker-compose up -d
+        docker compose up -d
     else
         print_warning "Docker Compose file not found, Grafana will need manual setup"
     fi
