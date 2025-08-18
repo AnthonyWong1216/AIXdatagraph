@@ -62,7 +62,16 @@ if command -v docker &> /dev/null; then
     print_status "Docker is already installed"
 else
     print_status "Installing Docker..."
-    sudo dnf install -y docker docker-compose
+    sudo dnf install -y docker
+    # Try to install docker-compose-plugin
+    if sudo dnf install -y docker-compose-plugin; then
+        print_status "docker-compose-plugin installed. Use 'docker compose' command."
+    else
+        print_warning "docker-compose-plugin not found in repositories. Installing Docker Compose manually."
+        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        print_status "Docker Compose installed manually at /usr/local/bin/docker-compose. Use 'docker-compose' command."
+    fi
     sudo systemctl enable docker
     sudo systemctl start docker
     sudo usermod -aG docker $USER
@@ -153,17 +162,26 @@ print_status "Setting up Grafana and InfluxDB with Docker..."
 cd docker
 if [ -f "docker-compose.yml" ]; then
     print_status "Starting Grafana and InfluxDB..."
-    docker-compose up -d
-    
-    # Wait for services to be ready
-    print_status "Waiting for services to be ready..."
-    sleep 30
-    
-    # Check service status
-    if docker-compose ps | grep -q "Up"; then
-        print_status "Docker services started successfully"
+    if command -v docker-compose &> /dev/null; then
+        docker-compose up -d
+        # Wait for services to be ready
+        print_status "Waiting for services to be ready..."
+        sleep 30
+        # Check service status
+        if docker-compose ps | grep -q "Up"; then
+            print_status "Docker services started successfully"
+        else
+            print_warning "Some Docker services may not be running properly"
+        fi
     else
-        print_warning "Some Docker services may not be running properly"
+        docker compose up -d
+        print_status "Waiting for services to be ready..."
+        sleep 30
+        if docker compose ps | grep -q "Up"; then
+            print_status "Docker services started successfully"
+        else
+            print_warning "Some Docker services may not be running properly"
+        fi
     fi
 else
     print_warning "Docker Compose file not found, Grafana will need manual setup"
@@ -244,7 +262,6 @@ fi
 print_header "Creating Startup Scripts"
 print_status "Creating startup and management scripts..."
 
-# Create startup script
 cat > start_services.sh << 'EOF'
 #!/bin/bash
 # AIX Data Graph Service Startup Script
@@ -253,7 +270,11 @@ echo "Starting AIX Data Graph services..."
 
 # Start Docker services
 cd docker
-docker-compose up -d
+if command -v docker-compose &> /dev/null; then
+    docker-compose up -d
+else
+    docker compose up -d
+fi
 cd ..
 
 # Start systemd services
@@ -279,7 +300,11 @@ sudo systemctl stop grafana-server
 
 # Stop Docker services
 cd docker
-docker-compose down
+if command -v docker-compose &> /dev/null; then
+    docker-compose down
+else
+    docker compose down
+fi
 cd ..
 
 echo "Services stopped."
@@ -304,7 +329,11 @@ sudo systemctl status grafana-server --no-pager -l
 echo ""
 echo "Docker Services:"
 cd docker
-docker-compose ps
+if command -v docker-compose &> /dev/null; then
+    docker-compose ps
+else
+    docker compose ps
+fi
 cd ..
 
 echo ""
