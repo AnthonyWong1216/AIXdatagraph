@@ -262,11 +262,37 @@ if command -v docker-compose &> /dev/null; then
 else
     docker compose up -d
         docker compose up -d
+# Stop systemd services
+sudo systemctl stop aix-log-collector
+        docker compose ps
+echo ""
+echo "Service URLs:"
+echo "- Grafana: http://localhost:3000"
+echo "- InfluxDB: http://localhost:8086"
+EOF
+chmod +x status.sh
+
+echo "Next Steps:"
+echo "==========="
+echo ""
+echo "1. Copy your SSH public key to AIX servers:"
+cat > start_services.sh << 'EOF'
+#!/bin/bash
+# AIX Data Graph Service Startup Script
+
+echo ""
+
+# Start Docker services
+cd docker
+docker compose up -d
+cd ..
+
+# Start systemd services
 sudo systemctl start aix-log-collector
 sudo systemctl start grafana-server
 
-echo "Services started. Check status with: sudo systemctl status aix-log-collector grafana-server"
-echo "Access Grafana at: http://localhost:3000 (admin/admin)"
+echo "3. Start the services:"
+echo "   ./start_services.sh"
 EOF
 
 chmod +x start_services.sh
@@ -276,7 +302,7 @@ cat > stop_services.sh << 'EOF'
 #!/bin/bash
 # AIX Data Graph Service Stop Script
 
-echo "Stopping AIX Data Graph services..."
+echo ""
 
 # Stop systemd services
 sudo systemctl stop aix-log-collector
@@ -284,11 +310,10 @@ sudo systemctl stop grafana-server
 
 # Stop Docker services
 cd docker
-if command -v docker-compose &> /dev/null; then
-    docker-compose down
-else
-        docker compose down
-echo "Services stopped."
+docker compose down
+cd ..
+
+echo "4. Test SSH connections to AIX servers:"
 EOF
 
 chmod +x stop_services.sh
@@ -298,63 +323,28 @@ cat > status.sh << 'EOF'
 #!/bin/bash
 # AIX Data Graph Service Status Script
 
-echo "AIX Data Graph Service Status"
-echo "=============================="
-
-echo ""
-echo "Systemd Services:"
-sudo systemctl status aix-log-collector --no-pager -l
-echo ""
-sudo systemctl status grafana-server --no-pager -l
-
-echo ""
-echo "Docker Services:"
-cd docker
-if command -v docker-compose &> /dev/null; then
-    docker-compose ps
-        docker compose ps
-
-echo ""
-echo "Service URLs:"
-echo "- Grafana: http://localhost:3000"
-echo "- InfluxDB: http://localhost:8086"
-EOF
-
-chmod +x status.sh
-
-# Final setup instructions
-print_header "Installation Complete!"
-print_status "AIX Data Graph has been installed successfully!"
-
-echo ""
-echo "Next Steps:"
-echo "==========="
-echo ""
-echo "1. Copy your SSH public key to AIX servers:"
-echo "   ssh-copy-id -i ~/.ssh/id_rsa.pub root@your-aix-server"
-echo ""
-echo "2. Update AIX server configuration in config/config.yaml"
-echo ""
-echo "3. Start the services:"
-echo "   ./start_services.sh"
-echo ""
-echo "4. Test SSH connections to AIX servers:"
 echo "   python3 scripts/ssh_setup.py --servers your-aix-server1,your-aix-server2 --test-only"
 echo ""
+
 echo "5. Access Grafana at: http://localhost:3000"
 echo "   Username: admin"
 echo "   Password: admin"
 echo ""
 echo "6. Run the log collector:"
+
 echo "   python3 collector/aix_log_collector.py --once"
 echo ""
 echo "7. Check service status:"
 echo "   ./status.sh"
 echo ""
+
 echo "8. View logs:"
 echo "   sudo journalctl -u aix-log-collector -f"
 echo "   sudo journalctl -u grafana-server -f"
 echo ""
+EOF
+
+chmod +x status.sh
 
 print_status "Installation completed successfully!"
 print_status "For more information, see README.md and docs/ directory"
