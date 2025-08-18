@@ -1,0 +1,36 @@
+[Unit]
+Description=AIX Log Collector Service
+Documentation=https://github.com/your-org/aixdatagraph
+After=network.target influxdb.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=aix-collector
+Group=aix-collector
+WorkingDirectory=/opt/aixdatagraph
+ExecStart=/usr/bin/python3 /opt/aixdatagraph/collector/aix_log_collector.py --daemon
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aix-log-collector
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/aix-log-collector /opt/aixdatagraph/logs
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Environment variables
+Environment=PYTHONPATH=/opt/aixdatagraph
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

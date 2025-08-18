@@ -1,0 +1,111 @@
+# AIX Data Graph Configuration File
+# This file contains all configuration settings for the AIX log collector
+
+# AIX Server Configuration
+aix_servers:
+  - name: "aix-server-1"
+    hostname: "192.168.1.100"
+    username: "root"
+    port: 22
+    description: "Production AIX Server 1"
+    
+  - name: "aix-server-2"
+    hostname: "192.168.1.101"
+    username: "root"
+    port: 22
+    description: "Production AIX Server 2"
+
+# SSH Configuration
+ssh:
+  private_key_path: "~/.ssh/id_rsa"
+  timeout: 30
+  retry_attempts: 3
+  retry_delay: 5
+
+# Log Collection Settings
+collection:
+  # Collection intervals in seconds
+  errpt_interval: 300      # 5 minutes
+  syslog_interval: 60      # 1 minute
+  
+  # Log retention settings
+  max_log_age_days: 30
+  max_log_size_mb: 1000
+  
+  # Error report collection
+  errpt:
+    enabled: true
+    commands:
+      - "errpt -a -s $(date -d '1 hour ago' +%m%d%H%M%y)"
+      - "errpt -a -s $(date -d '1 day ago' +%m%d%H%M%y)"
+    severity_levels: ["H", "S", "M", "L"]
+    
+  # System log collection
+  syslog:
+    enabled: true
+    log_files:
+      - "/var/adm/ras/errlog"
+      - "/var/adm/ras/conslog"
+      - "/var/adm/messages"
+    keywords: ["error", "fail", "critical", "warning"]
+
+# Database Configuration (InfluxDB)
+database:
+  type: "influxdb"
+  influxdb:
+    url: "http://localhost:8086"
+    token: "your-influxdb-token"
+    org: "aix-monitoring"
+    bucket: "aix-logs"
+    retention_policy: "30d"
+
+# Grafana Configuration
+grafana:
+  url: "http://localhost:3000"
+  username: "admin"
+  password: "admin"
+  api_key: ""
+  
+  # Dashboard settings
+  dashboards:
+    auto_create: true
+    refresh_interval: "30s"
+    default_time_range: "1h"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "json"
+  file: "/var/log/aix-log-collector/collector.log"
+  max_size_mb: 100
+  backup_count: 5
+  
+# Monitoring and Metrics
+monitoring:
+  enabled: true
+  port: 9090
+  metrics_path: "/metrics"
+  
+# Alerting Configuration
+alerts:
+  enabled: true
+  email:
+    smtp_server: "smtp.company.com"
+    smtp_port: 587
+    username: "alerts@company.com"
+    password: ""
+    recipients: ["admin@company.com"]
+  
+  # Alert thresholds
+  thresholds:
+    error_count_critical: 10
+    error_count_warning: 5
+    disk_usage_critical: 90
+    disk_usage_warning: 80
+
+# Performance Settings
+performance:
+  max_concurrent_connections: 10
+  connection_pool_size: 20
+  batch_size: 1000
+  flush_interval: 10
