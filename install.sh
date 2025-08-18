@@ -160,31 +160,18 @@ print_status "Setting up Grafana and InfluxDB with Docker..."
 
 # Start Docker services
 cd docker
-if [ -f "docker-compose.yml" ]; then
-    print_status "Starting Grafana and InfluxDB..."
-    if command -v docker-compose &> /dev/null; then
-        docker-compose up -d
-        # Wait for services to be ready
-        print_status "Waiting for services to be ready..."
-        sleep 30
-        # Check service status
-        if docker-compose ps | grep -q "Up"; then
-            print_status "Docker services started successfully"
+        if [ -f "docker-compose.yml" ]; then
+            print_status "Starting Grafana and InfluxDB..."
+            docker compose up -d
+            print_status "Waiting for services to be ready..."
+            sleep 30
+            if docker compose ps | grep -q "Up"; then
+                print_status "Docker services started successfully"
+            else
+                print_warning "Some Docker services may not be running properly"
+            fi
         else
-            print_warning "Some Docker services may not be running properly"
-        fi
-    else
-        docker compose up -d
-        print_status "Waiting for services to be ready..."
-        sleep 30
-        if docker compose ps | grep -q "Up"; then
-            print_status "Docker services started successfully"
-        else
-            print_warning "Some Docker services may not be running properly"
-        fi
-    fi
-else
-    print_warning "Docker Compose file not found, Grafana will need manual setup"
+            print_warning "Docker Compose file not found, Grafana will need manual setup"
 fi
 cd ..
 
@@ -274,10 +261,7 @@ if command -v docker-compose &> /dev/null; then
     docker-compose up -d
 else
     docker compose up -d
-fi
-cd ..
-
-# Start systemd services
+        docker compose up -d
 sudo systemctl start aix-log-collector
 sudo systemctl start grafana-server
 
@@ -303,10 +287,7 @@ cd docker
 if command -v docker-compose &> /dev/null; then
     docker-compose down
 else
-    docker compose down
-fi
-cd ..
-
+        docker compose down
 echo "Services stopped."
 EOF
 
@@ -331,10 +312,7 @@ echo "Docker Services:"
 cd docker
 if command -v docker-compose &> /dev/null; then
     docker-compose ps
-else
-    docker compose ps
-fi
-cd ..
+        docker compose ps
 
 echo ""
 echo "Service URLs:"
