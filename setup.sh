@@ -103,15 +103,17 @@ fi
 # Set permissions
 print_status "Setting permissions..."
 if ls scripts/*.py 1> /dev/null 2>&1; then
-    chmod +x scripts/*.py
+    print_status "Making Python scripts executable..."
+    sudo chmod +x scripts/*.py || print_warning "Failed to change permissions for Python scripts"
 else
-    print_warning "No Python scripts found in the scripts directory"
+    print_warning "No Python scripts found in the 'scripts' directory"
 fi
 
 if ls scripts/*.sh 1> /dev/null 2>&1; then
-    chmod +x scripts/*.sh
+    print_status "Making shell scripts executable..."
+    sudo chmod +x scripts/*.sh || print_warning "Failed to change permissions for shell scripts"
 else
-    print_warning "No shell scripts found in the scripts directory"
+    print_warning "No shell scripts found in the 'scripts' directory"
 fi
 
 # Create configuration file if it doesn't exist
