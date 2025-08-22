@@ -129,6 +129,35 @@ find_extracted_dir() {
     return 1
 }
 
+# Function to verify binary compatibility
+verify_binary_compatibility() {
+    local binary_path=$1
+    local binary_name=$2
+    
+    if [[ ! -f "$binary_path" ]]; then
+        print_error "$binary_name binary not found at $binary_path"
+        return 1
+    fi
+    
+    # Check if binary is executable
+    if [[ ! -x "$binary_path" ]]; then
+        print_error "$binary_name binary is not executable"
+        return 1
+    fi
+    
+    # Try to get binary architecture
+    local binary_arch=$(file "$binary_path" 2>/dev/null | grep -o "x86-64\|ppc64\|ARM\|aarch64" | head -1)
+    if [[ -n "$binary_arch" ]]; then
+        if [[ "$binary_arch" == "x86-64" && "$ARCH" == "ppc64le" ]]; then
+            print_warning "$binary_name is x86-64 binary on ppc64le architecture - may not work without emulation"
+            return 1
+        fi
+    fi
+    
+    print_status "$binary_name binary verified: $binary_path"
+    return 0
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    print_error "This script must be run as root"
@@ -251,26 +280,27 @@ else
     fi
 
     # If ppc64le not available, try amd64 with emulation
-    if [[ "$INFLUX_DOWNLOADED" == "false" ]]; then
-        print_warning "Power-specific InfluxDB binary not available, trying amd64 with emulation..."
-        if command -v wget > /dev/null 2>&1; then
-            if wget -q --timeout=30 --tries=3 https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz; then
-                if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
-                    INFLUX_DOWNLOADED=true
-                    INFLUX_ARCH="amd64"
-                    print_status "Successfully downloaded amd64 binary"
-                fi
+if [[ "$INFLUX_DOWNLOADED" == "false" ]]; then
+    print_warning "Power-specific InfluxDB binary not available, trying amd64 with emulation..."
+    print_warning "NOTE: amd64 binaries may not work on ppc64le architecture without emulation"
+    if command -v wget > /dev/null 2>&1; then
+        if wget -q --timeout=30 --tries=3 https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz; then
+            if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
+                INFLUX_DOWNLOADED=true
+                INFLUX_ARCH="amd64"
+                print_status "Successfully downloaded amd64 binary"
             fi
-        elif command -v curl > /dev/null 2>&1; then
-            if curl -L --connect-timeout 30 --max-time 300 -o influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz; then
-                if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
-                    INFLUX_DOWNLOADED=true
-                    INFLUX_ARCH="amd64"
-                    print_status "Successfully downloaded amd64 binary"
-                fi
+        fi
+    elif command -v curl > /dev/null 2>&1; then
+        if curl -L --connect-timeout 30 --max-time 300 -o influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz; then
+            if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
+                INFLUX_DOWNLOADED=true
+                INFLUX_ARCH="amd64"
+                print_status "Successfully downloaded amd64 binary"
             fi
         fi
     fi
+fi
 fi
 
 if [[ "$INFLUX_DOWNLOADED" == "false" ]]; then
@@ -324,6 +354,19 @@ fi
 # Make binaries executable
 chmod +x $INFLUXDB_HOME/influxd
 chmod +x /usr/local/bin/influx
+
+# Verify binary compatibility
+print_status "Verifying InfluxDB binaries..."
+if ! verify_binary_compatibility "$INFLUXDB_HOME/influxd" "InfluxDB server"; then
+    print_error "InfluxDB server binary verification failed"
+    print_status "This may be due to architecture mismatch (amd64 on ppc64le)"
+    print_status "Consider using Docker installation instead: install_with_docker.sh"
+    exit 1
+fi
+
+if ! verify_binary_compatibility "/usr/local/bin/influx" "InfluxDB CLI"; then
+    print_warning "InfluxDB CLI binary verification failed, but continuing..."
+fi
 
 # Create symbolic link for influxd
 ln -sf $INFLUXDB_HOME/influxd /usr/local/bin/influxd
@@ -577,6 +620,28 @@ print_status "Installing Grafana files..."
 # Make binaries executable
 [[ -f "$GRAFANA_HOME/grafana-server" ]] && chmod +x $GRAFANA_HOME/grafana-server
 [[ -f "$GRAFANA_HOME/grafana-cli" ]] && chmod +x $GRAFANA_HOME/grafana-cli
+
+# Verify binary compatibility
+print_status "Verifying Grafana binaries..."
+if [[ -f "$GRAFANA_HOME/grafana-server" ]]; then
+    if ! verify_binary_compatibility "$GRAFANA_HOME/grafana-server" "Grafana server"; then
+        print_error "Grafana server binary verification failed"
+        print_status "This may be due to architecture mismatch (amd64 on ppc64le)"
+        print_status "Consider using Docker installation instead: install_with_docker.sh"
+        exit 1
+    fi
+else
+    print_error "Grafana server binary not found at $GRAFANA_HOME/grafana-server"
+    print_status "Available files in $GRAFANA_HOME:"
+    ls -la $GRAFANA_HOME/ 2>/dev/null || print_status "Directory not accessible"
+    exit 1
+fi
+
+if [[ -f "$GRAFANA_HOME/grafana-cli" ]]; then
+    if ! verify_binary_compatibility "$GRAFANA_HOME/grafana-cli" "Grafana CLI"; then
+        print_warning "Grafana CLI binary verification failed, but continuing..."
+    fi
+fi
 
 # Create symbolic links
 [[ -f "$GRAFANA_HOME/grafana-server" ]] && ln -sf $GRAFANA_HOME/grafana-server /usr/local/bin/grafana-server
