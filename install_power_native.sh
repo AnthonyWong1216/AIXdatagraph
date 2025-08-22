@@ -323,11 +323,10 @@ fi
 
 # Make binaries executable
 chmod +x $INFLUXDB_HOME/influxd
-chmod +x $INFLUXDB_HOME/influx
+chmod +x /usr/local/bin/influx
 
-# Create symbolic links
+# Create symbolic link for influxd
 ln -sf $INFLUXDB_HOME/influxd /usr/local/bin/influxd
-ln -sf $INFLUXDB_HOME/influx /usr/local/bin/influx
 
 # Create systemd service file
 print_status "Creating systemd service file..."
