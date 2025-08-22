@@ -419,7 +419,17 @@ print_header "Starting monitoring stack..."
 cd /opt/aixdatagraph
 
 print_status "Starting containers..."
-docker-compose up -d
+# Use docker compose (newer syntax) or fallback to docker-compose
+if command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+    docker compose up -d
+elif command -v docker-compose > /dev/null 2>&1; then
+    docker-compose up -d
+else
+    print_error "Neither 'docker compose' nor 'docker-compose' is available"
+    print_status "Installing docker-compose..."
+    dnf install -y docker-compose
+    docker-compose up -d
+fi
 
 # Step 9: Wait for services to be ready
 print_header "Waiting for services to be ready..."
@@ -541,28 +551,60 @@ print_header "Creating management scripts..."
 cat > /opt/aixdatagraph/start.sh << 'EOF'
 #!/bin/bash
 cd /opt/aixdatagraph
-docker-compose up -d
+# Use docker compose (newer syntax) or fallback to docker-compose
+if command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+    docker compose up -d
+elif command -v docker-compose > /dev/null 2>&1; then
+    docker-compose up -d
+else
+    echo "Error: Neither 'docker compose' nor 'docker-compose' is available"
+    exit 1
+fi
 echo "Monitoring stack started"
 EOF
 
 cat > /opt/aixdatagraph/stop.sh << 'EOF'
 #!/bin/bash
 cd /opt/aixdatagraph
-docker-compose down
+# Use docker compose (newer syntax) or fallback to docker-compose
+if command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+    docker compose down
+elif command -v docker-compose > /dev/null 2>&1; then
+    docker-compose down
+else
+    echo "Error: Neither 'docker compose' nor 'docker-compose' is available"
+    exit 1
+fi
 echo "Monitoring stack stopped"
 EOF
 
 cat > /opt/aixdatagraph/restart.sh << 'EOF'
 #!/bin/bash
 cd /opt/aixdatagraph
-docker-compose restart
+# Use docker compose (newer syntax) or fallback to docker-compose
+if command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+    docker compose restart
+elif command -v docker-compose > /dev/null 2>&1; then
+    docker-compose restart
+else
+    echo "Error: Neither 'docker compose' nor 'docker-compose' is available"
+    exit 1
+fi
 echo "Monitoring stack restarted"
 EOF
 
 cat > /opt/aixdatagraph/status.sh << 'EOF'
 #!/bin/bash
 cd /opt/aixdatagraph
-docker-compose ps
+# Use docker compose (newer syntax) or fallback to docker-compose
+if command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+    docker compose ps
+elif command -v docker-compose > /dev/null 2>&1; then
+    docker-compose ps
+else
+    echo "Error: Neither 'docker compose' nor 'docker-compose' is available"
+    exit 1
+fi
 echo ""
 echo "Service URLs:"
 echo "- InfluxDB: http://localhost:8086"
@@ -572,7 +614,15 @@ EOF
 cat > /opt/aixdatagraph/logs.sh << 'EOF'
 #!/bin/bash
 cd /opt/aixdatagraph
-docker-compose logs -f
+# Use docker compose (newer syntax) or fallback to docker-compose
+if command -v docker > /dev/null 2>&1 && docker compose version > /dev/null 2>&1; then
+    docker compose logs -f
+elif command -v docker-compose > /dev/null 2>&1; then
+    docker-compose logs -f
+else
+    echo "Error: Neither 'docker compose' nor 'docker-compose' is available"
+    exit 1
+fi
 EOF
 
 chmod +x /opt/aixdatagraph/*.sh

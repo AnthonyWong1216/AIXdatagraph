@@ -183,7 +183,19 @@ influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
 
 ### Common Issues
 
-1. **Services won't start**
+1. **Docker Compose command not found**
+   ```bash
+   # For newer Docker versions, use:
+   docker compose up -d
+   
+   # For older versions, install docker-compose:
+   dnf install -y docker-compose
+   
+   # Or use the management scripts:
+   /opt/aixdatagraph/start.sh
+   ```
+
+2. **Services won't start**
    ```bash
    # Check logs
    journalctl -u influxdb -n 50
@@ -193,14 +205,14 @@ influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
    netstat -tlnp | grep -E ':(8086|3000)'
    ```
 
-2. **Permission issues**
+3. **Permission issues**
    ```bash
    # Fix ownership
    chown -R influxdb:influxdb /var/lib/influxdb /var/log/influxdb
    chown -R grafana:grafana /var/lib/grafana /var/log/grafana
    ```
 
-3. **SELinux issues**
+4. **SELinux issues**
    ```bash
    # Check SELinux status
    sestatus
@@ -209,7 +221,7 @@ influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
    setsebool -P httpd_can_network_connect 1
    ```
 
-4. **Firewall issues**
+5. **Firewall issues**
    ```bash
    # Open required ports
    firewall-cmd --permanent --add-port=8086/tcp
