@@ -557,21 +557,30 @@ fi
 
 # Copy files to installation directory
 print_status "Installing Grafana files..."
-cp -r bin $GRAFANA_HOME/
-cp -r conf $GRAFANA_HOME/
-cp -r public $GRAFANA_HOME/
-cp -r tools $GRAFANA_HOME/
-cp -r vendor $GRAFANA_HOME/
-cp grafana-server $GRAFANA_HOME/
-cp grafana-cli $GRAFANA_HOME/
+# Copy directories if they exist
+[[ -d "bin" ]] && cp -r bin $GRAFANA_HOME/
+[[ -d "conf" ]] && cp -r conf $GRAFANA_HOME/
+[[ -d "public" ]] && cp -r public $GRAFANA_HOME/
+[[ -d "tools" ]] && cp -r tools $GRAFANA_HOME/
+[[ -d "vendor" ]] && cp -r vendor $GRAFANA_HOME/
+[[ -d "scripts" ]] && cp -r scripts $GRAFANA_HOME/
+[[ -d "packaging" ]] && cp -r packaging $GRAFANA_HOME/
+
+# Copy binaries
+[[ -f "grafana-server" ]] && cp grafana-server $GRAFANA_HOME/
+[[ -f "grafana-cli" ]] && cp grafana-cli $GRAFANA_HOME/
+
+# Copy any other important files
+[[ -f "LICENSE" ]] && cp LICENSE $GRAFANA_HOME/
+[[ -f "README.md" ]] && cp README.md $GRAFANA_HOME/
 
 # Make binaries executable
-chmod +x $GRAFANA_HOME/grafana-server
-chmod +x $GRAFANA_HOME/grafana-cli
+[[ -f "$GRAFANA_HOME/grafana-server" ]] && chmod +x $GRAFANA_HOME/grafana-server
+[[ -f "$GRAFANA_HOME/grafana-cli" ]] && chmod +x $GRAFANA_HOME/grafana-cli
 
 # Create symbolic links
-ln -sf $GRAFANA_HOME/grafana-server /usr/local/bin/grafana-server
-ln -sf $GRAFANA_HOME/grafana-cli /usr/local/bin/grafana-cli
+[[ -f "$GRAFANA_HOME/grafana-server" ]] && ln -sf $GRAFANA_HOME/grafana-server /usr/local/bin/grafana-server
+[[ -f "$GRAFANA_HOME/grafana-cli" ]] && ln -sf $GRAFANA_HOME/grafana-cli /usr/local/bin/grafana-cli
 
 # Create systemd service file
 print_status "Creating systemd service file..."
