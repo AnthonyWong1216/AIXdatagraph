@@ -102,6 +102,33 @@ check_system_requirements() {
     print_status "System requirements check passed"
 }
 
+# Function to find extracted directory
+find_extracted_dir() {
+    local pattern=$1
+    local current_dir=$(pwd)
+    
+    # Look for directories matching the pattern
+    for dir in */; do
+        if [[ -d "$dir" && "$dir" =~ $pattern ]]; then
+            echo "$dir"
+            return 0
+        fi
+    done
+    
+    # If no exact match, look for any directory containing the pattern
+    for dir in */; do
+        if [[ -d "$dir" && "$dir" =~ influxdb2 ]] && [[ "$pattern" =~ influxdb2 ]]; then
+            echo "$dir"
+            return 0
+        elif [[ -d "$dir" && "$dir" =~ grafana ]] && [[ "$pattern" =~ grafana ]]; then
+            echo "$dir"
+            return 0
+        fi
+    done
+    
+    return 1
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    print_error "This script must be run as root"
@@ -260,8 +287,18 @@ if [[ "$INFLUX_ARCH" == "ppc64le" ]]; then
     cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influx $INFLUXDB_HOME/
 elif [[ "$INFLUX_ARCH" == "amd64" ]]; then
     tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
-    cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influxd $INFLUXDB_HOME/
-    cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influx $INFLUXDB_HOME/
+    # Find the extracted directory automatically
+    local influx_dir=$(find_extracted_dir "influxdb2")
+    if [[ -n "$influx_dir" ]]; then
+        print_status "Found InfluxDB directory: $influx_dir"
+        cp "${influx_dir%/}/influxd" $INFLUXDB_HOME/
+        cp "${influx_dir%/}/influx" $INFLUXDB_HOME/
+    else
+        print_error "Could not find InfluxDB binary directory after extraction"
+        print_status "Available directories:"
+        ls -la | grep influxdb2 || print_status "No influxdb2 directories found"
+        exit 1
+    fi
 fi
 
 # Make binaries executable
@@ -486,7 +523,17 @@ if [[ "$GRAFANA_ARCH" == "ppc64le" ]]; then
     cd grafana-${GRAFANA_VERSION}
 elif [[ "$GRAFANA_ARCH" == "amd64" ]]; then
     tar -xzf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
-    cd grafana-${GRAFANA_VERSION}
+    # Find the extracted directory automatically
+    local grafana_dir=$(find_extracted_dir "grafana")
+    if [[ -n "$grafana_dir" ]]; then
+        print_status "Found Grafana directory: $grafana_dir"
+        cd "${grafana_dir%/}"
+    else
+        print_error "Could not find Grafana directory after extraction"
+        print_status "Available directories:"
+        ls -la | grep grafana || print_status "No grafana directories found"
+        exit 1
+    fi
 fi
 
 # Copy files to installation directory
