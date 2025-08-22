@@ -53,23 +53,35 @@ sudo dnf update -y
 # Install required packages
 print_header "Installing Required Packages"
 print_status "Installing system packages..."
+
+# Install development tools first
+sudo dnf group install -y "Development Tools"
+
+# Install Python and basic development packages
 sudo dnf install -y python3 python3-pip python3-devel gcc gcc-c++ \
     openssl-devel libffi-devel wget curl git jq unzip \
-    python3-wheel python3-numpy python3-pandas \
     make automake patch zlib-devel bzip2-devel readline-devel sqlite-devel \
-    xz-devel libuuid-devel gdbm-devel libnsl2-devel
+    xz-devel atlas
+
+# Try to install numpy and pandas from system packages
+sudo dnf install -y python3-numpy python3-pandas || {
+    print_warning "Could not install numpy/pandas from system packages, will try pip install later"
+}
 
 # Upgrade pip to latest version
 print_status "Upgrading pip..."
 python3 -m pip install --user --upgrade pip setuptools wheel
 
-# Install Python dependencies
+# Install Python dependencies one by one with error handling
 print_status "Installing Python packages..."
-python3 -m pip install --user pandas numpy bcrypt --no-cache-dir
+for package in numpy pandas bcrypt; do
+    print_status "Installing $package..."
+    python3 -m pip install --user $package --no-cache-dir || print_warning "Failed to install $package"
+done
 
 # Install remaining requirements
 print_status "Installing remaining Python packages..."
-python3 -m pip install --user -r requirements.txt --no-cache-dir
+python3 -m pip install --user -r requirements.txt --no-cache-dir || print_warning "Some packages in requirements.txt may have failed to install"
 
 # Install Docker/Podman
 print_header "Installing Container Runtime"
