@@ -284,7 +284,8 @@ print_status "Extracting and installing InfluxDB ${INFLUX_ARCH} binary..."
 if [[ "$INFLUX_ARCH" == "ppc64le" ]]; then
     tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
     cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influxd $INFLUXDB_HOME/
-    cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influx $INFLUXDB_HOME/
+    cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influx /usr/local/bin/
+    chmod +x /usr/local/bin/influx
 elif [[ "$INFLUX_ARCH" == "amd64" ]]; then
     tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
     # Find the extracted directory automatically
@@ -294,7 +295,8 @@ elif [[ "$INFLUX_ARCH" == "amd64" ]]; then
         cp "${influx_dir%/}/influxd" $INFLUXDB_HOME/
         # Check if influx CLI exists, if not download it separately
         if [[ -f "${influx_dir%/}/influx" ]]; then
-            cp "${influx_dir%/}/influx" $INFLUXDB_HOME/
+            cp "${influx_dir%/}/influx" /usr/local/bin/
+            chmod +x /usr/local/bin/influx
         else
             print_warning "Influx CLI not found in package, downloading separately..."
             cd /tmp
