@@ -89,3 +89,4 @@ See `docs/troubleshooting.md` for common issues and solutions.
 ## License
 
 MIT License - see LICENSE file for details.
+

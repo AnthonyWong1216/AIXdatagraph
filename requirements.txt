@@ -25,3 +25,4 @@ click>=8.1.0
 # Utilities
 psutil>=5.9.0
 cryptography>=41.0.0
+

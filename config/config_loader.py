@@ -286,3 +286,4 @@ class ConfigLoader:
             return self.config['collection']['syslog']['enabled']
         else:
             return False
+

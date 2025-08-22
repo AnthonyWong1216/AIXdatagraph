@@ -109,3 +109,4 @@ performance:
   connection_pool_size: 20
   batch_size: 1000
   flush_interval: 10
+

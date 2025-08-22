@@ -92,3 +92,4 @@ def get_logger(name: str) -> structlog.BoundLogger:
 def setup_child_logger(parent_logger: structlog.BoundLogger, name: str) -> structlog.BoundLogger:
     """Setup a child logger with the same configuration as parent"""
     return parent_logger.bind(logger_name=name)
+

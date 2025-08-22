@@ -348,3 +348,4 @@ chmod +x status.sh
 
 print_status "Installation completed successfully!"
 print_status "For more information, see README.md and docs/ directory"
+

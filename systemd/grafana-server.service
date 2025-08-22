@@ -34,3 +34,4 @@ Environment=GF_USERS_ALLOW_SIGN_UP=false
 
 [Install]
 WantedBy=multi-user.target
+

@@ -214,3 +214,4 @@ sudo journalctl -u grafana-server -f
 ```
 
 That's it! You should now have a fully functional AIX log collection and monitoring system running.
+
