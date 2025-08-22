@@ -56,27 +56,37 @@ print_status "Installing system packages..."
 sudo dnf install -y python3 python3-pip python3-devel gcc openssl-devel libffi-devel
 sudo dnf install -y wget curl git jq unzip
 
-# Install Docker and Docker Compose
-print_header "Installing Docker"
+# Install Docker/Podman
+print_header "Installing Container Runtime"
 if command -v docker &> /dev/null; then
-    print_status "Docker is already installed"
+    print_status "Docker/Podman is already installed"
 else
-    print_status "Installing Docker..."
-    sudo dnf install -y docker
-    # Try to install docker-compose-plugin
-    if sudo dnf install -y docker-compose-plugin; then
-        print_status "docker-compose-plugin installed. Use 'docker compose' command."
-    else
-        print_warning "docker-compose-plugin not found in repositories. Installing Docker Compose manually."
-        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        print_status "Docker Compose installed manually at /usr/local/bin/docker-compose. Use 'docker-compose' command."
-    fi
-    sudo systemctl enable docker
-    sudo systemctl start docker
-    sudo usermod -aG docker $USER
-    print_warning "Docker installed. You may need to log out and back in for group changes to take effect."
+    print_status "Installing Podman and Docker compatibility layer..."
+    sudo dnf install -y podman podman-docker container-tools
+    
+    # Enable podman.socket for rootless containers
+    systemctl --user enable podman.socket
+    systemctl --user start podman.socket
+    
+    # Create Docker compatibility symlink
+    sudo ln -s /usr/bin/podman /usr/bin/docker 2>/dev/null || true
+    
+    print_status "Container runtime installed successfully"
+    print_warning "You may need to log out and back in for group changes to take effect."
 fi
+
+# Install Docker Compose functionality
+if ! command -v docker-compose &> /dev/null; then
+    print_status "Installing Docker Compose support..."
+    sudo dnf install -y docker-compose-plugin || {
+        print_warning "docker-compose-plugin not found, installing podman-compose..."
+        sudo dnf install -y podman-compose
+    }
+fi
+
+# Create nodocker file to suppress emulation message
+sudo mkdir -p /etc/containers
+echo "" | sudo tee /etc/containers/nodocker >/dev/null
 
 # Create project directories
 print_header "Creating Project Structure"
@@ -337,7 +347,7 @@ echo ""
 echo "7. Check service status:"
 echo "   ./status.sh"
 echo ""
-
+  
 echo "8. View logs:"
 echo "   sudo journalctl -u aix-log-collector -f"
 echo "   sudo journalctl -u grafana-server -f"
@@ -348,4 +358,3 @@ chmod +x status.sh
 
 print_status "Installation completed successfully!"
 print_status "For more information, see README.md and docs/ directory"
-
