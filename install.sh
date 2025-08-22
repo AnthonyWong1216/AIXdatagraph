@@ -88,10 +88,32 @@ fi
 sudo mkdir -p /etc/containers
 echo "" | sudo tee /etc/containers/nodocker >/dev/null
 
-# Create project directories
+# Create project directories with proper permissions
 print_header "Creating Project Structure"
 print_status "Creating project directories..."
-mkdir -p collector grafana scripts systemd docker config docs logs
+
+# Define project directories
+PROJECT_DIRS=(
+    "collector"
+    "grafana"
+    "scripts"
+    "systemd"
+    "docker"
+    "config"
+    "docs"
+    "logs"
+)
+
+# Create directories with proper permissions
+for dir in "${PROJECT_DIRS[@]}"; do
+    if [ ! -d "$dir" ]; then
+        sudo mkdir -p "$dir"
+        sudo chown $USER:$USER "$dir"
+        print_status "Created directory: $dir"
+    else
+        print_status "Directory already exists: $dir"
+    fi
+done
 
 # Install Python dependencies
 print_header "Installing Python Dependencies"
