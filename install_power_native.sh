@@ -288,11 +288,29 @@ if [[ "$INFLUX_ARCH" == "ppc64le" ]]; then
 elif [[ "$INFLUX_ARCH" == "amd64" ]]; then
     tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
     # Find the extracted directory automatically
-    local influx_dir=$(find_extracted_dir "influxdb2")
+    influx_dir=$(find_extracted_dir "influxdb2")
     if [[ -n "$influx_dir" ]]; then
         print_status "Found InfluxDB directory: $influx_dir"
         cp "${influx_dir%/}/influxd" $INFLUXDB_HOME/
-        cp "${influx_dir%/}/influx" $INFLUXDB_HOME/
+        # Check if influx CLI exists, if not download it separately
+        if [[ -f "${influx_dir%/}/influx" ]]; then
+            cp "${influx_dir%/}/influx" $INFLUXDB_HOME/
+        else
+            print_warning "Influx CLI not found in package, downloading separately..."
+            cd /tmp
+            if command -v wget > /dev/null 2>&1; then
+                wget -q --timeout=30 --tries=3 https://dl.influxdata.com/influxdb/releases/influxdb2-client-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+            elif command -v curl > /dev/null 2>&1; then
+                curl -L --connect-timeout 30 --max-time 300 -o influxdb2-client-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-client-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+            fi
+            if [[ -f "influxdb2-client-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
+                tar -xzf influxdb2-client-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+                cp influx /usr/local/bin/
+                chmod +x /usr/local/bin/influx
+            else
+                print_warning "Could not download influx CLI, you may need to install it manually"
+            fi
+        fi
     else
         print_error "Could not find InfluxDB binary directory after extraction"
         print_status "Available directories:"
@@ -524,7 +542,7 @@ if [[ "$GRAFANA_ARCH" == "ppc64le" ]]; then
 elif [[ "$GRAFANA_ARCH" == "amd64" ]]; then
     tar -xzf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
     # Find the extracted directory automatically
-    local grafana_dir=$(find_extracted_dir "grafana")
+    grafana_dir=$(find_extracted_dir "grafana")
     if [[ -n "$grafana_dir" ]]; then
         print_status "Found Grafana directory: $grafana_dir"
         cd "${grafana_dir%/}"
