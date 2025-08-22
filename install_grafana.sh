@@ -98,18 +98,57 @@ chown -R $GRAFANA_USER:$GRAFANA_GROUP $GRAFANA_LOG
 print_status "Downloading Grafana ${GRAFANA_VERSION}..."
 cd /tmp
 
-if command -v wget > /dev/null 2>&1; then
-    wget -q https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
-elif command -v curl > /dev/null 2>&1; then
-    curl -L -o grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+# Detect architecture
+ARCH=$(uname -m)
+print_status "Detected architecture: $ARCH"
+
+if [[ "$ARCH" == "ppc64le" ]]; then
+    # For IBM Power servers
+    print_status "Installing for IBM Power (ppc64le) architecture..."
+    
+    # Check if Grafana binary exists for ppc64le
+    if command -v wget > /dev/null 2>&1; then
+        wget -q https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz
+    elif command -v curl > /dev/null 2>&1; then
+        curl -L -o grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz
+    else
+        print_error "Neither wget nor curl is available"
+        exit 1
+    fi
+    
+    if [[ -f "grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz" ]]; then
+        tar -xzf grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz
+        cd grafana-${GRAFANA_VERSION}
+    else
+        print_warning "Grafana ppc64le binary not available, trying amd64 with emulation..."
+        # Fallback to amd64 if ppc64le not available
+        if command -v wget > /dev/null 2>&1; then
+            wget -q https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+        elif command -v curl > /dev/null 2>&1; then
+            curl -L -o grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+        fi
+        tar -xzf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+        cd grafana-${GRAFANA_VERSION}
+    fi
+elif [[ "$ARCH" == "x86_64" ]]; then
+    # For x86_64 systems
+    print_status "Installing for x86_64 architecture..."
+    if command -v wget > /dev/null 2>&1; then
+        wget -q https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+    elif command -v curl > /dev/null 2>&1; then
+        curl -L -o grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+    else
+        print_error "Neither wget nor curl is available"
+        exit 1
+    fi
+    
+    tar -xzf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+    cd grafana-${GRAFANA_VERSION}
 else
-    print_error "Neither wget nor curl is available"
+    print_error "Unsupported architecture: $ARCH"
+    print_status "Supported architectures: ppc64le, x86_64"
     exit 1
 fi
-
-# Extract Grafana
-tar -xzf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
-cd grafana-${GRAFANA_VERSION}
 
 # Copy files to installation directory
 print_status "Installing Grafana files..."
@@ -311,7 +350,12 @@ fi
 # Clean up
 cd /
 rm -rf /tmp/grafana-${GRAFANA_VERSION}
-rm -f /tmp/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+if [[ "$ARCH" == "ppc64le" ]]; then
+    rm -f /tmp/grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz
+    rm -f /tmp/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+else
+    rm -f /tmp/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+fi
 
 print_status "Grafana installation completed successfully!"
 echo ""

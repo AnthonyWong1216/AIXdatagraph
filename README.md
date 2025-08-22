@@ -10,13 +10,19 @@ The monitoring stack consists of:
 
 ## Installation Scripts
 
-### 1. Complete Installation (Recommended)
+### 1. Docker Installation (Recommended for IBM Power)
+```bash
+sudo bash install_with_docker.sh
+```
+This script installs InfluxDB and Grafana using Docker containers, which is the most reliable method for IBM Power (ppc64le) architecture.
+
+### 2. Complete Native Installation
 ```bash
 sudo bash install_monitoring_stack.sh
 ```
-This script installs both InfluxDB and Grafana, configures them to work together, and sets up automatic log collection.
+This script installs both InfluxDB and Grafana natively, configures them to work together, and sets up automatic log collection.
 
-### 2. Individual Installations
+### 3. Individual Native Installations
 ```bash
 # Install InfluxDB only
 sudo bash install_influxdb.sh
@@ -31,10 +37,12 @@ sudo bash install_grafana.sh
 - Root/sudo access
 - Internet connection for downloading packages
 - At least 2GB RAM and 10GB disk space
+- **For IBM Power servers**: Docker installation is recommended for better compatibility
 
 ## What Gets Installed
 
-### InfluxDB
+### Native Installation
+#### InfluxDB
 - Installed to `/opt/influxdb/`
 - Configuration: `/etc/influxdb/influxdb.conf`
 - Data directory: `/var/lib/influxdb/`
@@ -42,12 +50,25 @@ sudo bash install_grafana.sh
 - Service: `influxdb.service`
 - Port: 8086
 
-### Grafana
+#### Grafana
 - Installed to `/usr/share/grafana/`
 - Configuration: `/etc/grafana/grafana.ini`
 - Data directory: `/var/lib/grafana/`
 - Logs: `/var/log/grafana/`
 - Service: `grafana-server.service`
+- Port: 3000
+
+### Docker Installation
+#### InfluxDB
+- Container: `aixdatagraph_influxdb`
+- Data volume: `/opt/aixdatagraph/influxdb/data`
+- Configuration: `/opt/aixdatagraph/influxdb/config`
+- Port: 8086
+
+#### Grafana
+- Container: `aixdatagraph_grafana`
+- Data volume: `/opt/aixdatagraph/grafana/data`
+- Configuration: `/opt/aixdatagraph/grafana/config`
 - Port: 3000
 
 ## Default Access

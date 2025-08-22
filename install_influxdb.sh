@@ -93,18 +93,60 @@ if [[ "$OS" == "rhel" || "$OS" == "linux" ]]; then
     print_status "Installing dependencies..."
     dnf install -y wget curl tar gzip
     
-    if command -v wget > /dev/null 2>&1; then
-        wget -q https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
-    elif command -v curl > /dev/null 2>&1; then
-        curl -L -o influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+    # Detect architecture
+    ARCH=$(uname -m)
+    print_status "Detected architecture: $ARCH"
+    
+    if [[ "$ARCH" == "ppc64le" ]]; then
+        # For IBM Power servers
+        print_status "Installing for IBM Power (ppc64le) architecture..."
+        
+        # Check if InfluxDB binary exists for ppc64le
+        if command -v wget > /dev/null 2>&1; then
+            wget -q https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
+        elif command -v curl > /dev/null 2>&1; then
+            curl -L -o influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
+        else
+            print_error "Neither wget nor curl is available"
+            exit 1
+        fi
+        
+        if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz" ]]; then
+            tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
+            cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influxd $INFLUXDB_HOME/
+            cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influx $INFLUXDB_HOME/
+        else
+            print_warning "InfluxDB ppc64le binary not available, trying amd64 with emulation..."
+            # Fallback to amd64 if ppc64le not available
+            if command -v wget > /dev/null 2>&1; then
+                wget -q https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+            elif command -v curl > /dev/null 2>&1; then
+                curl -L -o influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+            fi
+            tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+            cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influxd $INFLUXDB_HOME/
+            cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influx $INFLUXDB_HOME/
+        fi
+    elif [[ "$ARCH" == "x86_64" ]]; then
+        # For x86_64 systems
+        print_status "Installing for x86_64 architecture..."
+        if command -v wget > /dev/null 2>&1; then
+            wget -q https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+        elif command -v curl > /dev/null 2>&1; then
+            curl -L -o influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+        else
+            print_error "Neither wget nor curl is available"
+            exit 1
+        fi
+        
+        tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+        cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influxd $INFLUXDB_HOME/
+        cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influx $INFLUXDB_HOME/
     else
-        print_error "Neither wget nor curl is available"
+        print_error "Unsupported architecture: $ARCH"
+        print_status "Supported architectures: ppc64le, x86_64"
         exit 1
     fi
-    
-    tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
-    cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influxd $INFLUXDB_HOME/
-    cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influx $INFLUXDB_HOME/
     
 elif [[ "$OS" == "aix" ]]; then
     # For AIX systems - you might need to download manually or use a different approach
@@ -236,8 +278,14 @@ EOF
 fi
 
 # Clean up
-rm -rf /tmp/influxdb2-${INFLUXDB_VERSION}-linux-amd64*
-rm -f /tmp/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+if [[ "$ARCH" == "ppc64le" ]]; then
+    rm -rf /tmp/influxdb2-${INFLUXDB_VERSION}-linux-ppc64le*
+    rm -f /tmp/influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
+    rm -f /tmp/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+else
+    rm -rf /tmp/influxdb2-${INFLUXDB_VERSION}-linux-amd64*
+    rm -f /tmp/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+fi
 
 print_status "InfluxDB installation completed successfully!"
 echo ""
