@@ -1,92 +1,225 @@
-# AIX Data Graph - AIX Server Log Collection and Visualization
+# AIX Data Graph Monitoring Stack
 
-This project provides a comprehensive solution for collecting AIX server logs (errpt error reports and syslogs) and displaying them in Grafana dashboards on Red Hat Linux 9.
+This directory contains scripts to install and configure a complete monitoring stack for log collection and visualization on Red Hat Enterprise Linux 9.
 
-## Features
+## Overview
 
-- **AIX Log Collection**: Automated collection of errpt error reports and syslogs from AIX servers
-- **Grafana Visualization**: Real-time dashboards for monitoring AIX server health and errors
-- **SSH Key Management**: Automated SSH key generation and distribution to AIX servers
-- **Systemd Service**: Runs as a system service for continuous monitoring
-- **Docker Support**: Containerized deployment option for easy setup
+The monitoring stack consists of:
+- **InfluxDB 2.7.1**: Time series database for storing log data
+- **Grafana 10.2.3**: Visualization platform for creating dashboards and alerts
 
-## Architecture
+## Installation Scripts
 
+### 1. Complete Installation (Recommended)
+```bash
+sudo bash install_monitoring_stack.sh
 ```
-AIX Servers (errpt + syslog) 
-    ↓ (SSH)
-Log Collector (Python)
-    ↓ (InfluxDB)
-Grafana Dashboards
+This script installs both InfluxDB and Grafana, configures them to work together, and sets up automatic log collection.
+
+### 2. Individual Installations
+```bash
+# Install InfluxDB only
+sudo bash install_influxdb.sh
+
+# Install Grafana only  
+sudo bash install_grafana.sh
 ```
 
 ## Prerequisites
 
-- Red Hat Linux 9 (or compatible)
-- Python 3.9+
-- Docker and Docker Compose (optional)
-- Access to AIX servers via SSH
+- Red Hat Enterprise Linux 9 (or compatible)
+- Root/sudo access
+- Internet connection for downloading packages
+- At least 2GB RAM and 10GB disk space
 
-## Quick Start
+## What Gets Installed
 
-### 1. Clone and Setup
+### InfluxDB
+- Installed to `/opt/influxdb/`
+- Configuration: `/etc/influxdb/influxdb.conf`
+- Data directory: `/var/lib/influxdb/`
+- Logs: `/var/log/influxdb/`
+- Service: `influxdb.service`
+- Port: 8086
+
+### Grafana
+- Installed to `/usr/share/grafana/`
+- Configuration: `/etc/grafana/grafana.ini`
+- Data directory: `/var/lib/grafana/`
+- Logs: `/var/log/grafana/`
+- Service: `grafana-server.service`
+- Port: 3000
+
+## Default Access
+
+After installation:
+- **Grafana**: http://localhost:3000 (admin/admin)
+- **InfluxDB**: http://localhost:8086 (admin/admin123)
+
+⚠️ **Important**: Change default passwords after first login!
+
+## Log Collection
+
+### Automatic Collection
+The installation includes a systemd timer that collects logs every 5 minutes:
 ```bash
-cd AIXdatagraph
-chmod +x setup.sh
-./setup.sh
+# Check timer status
+systemctl status log-collector.timer
+
+# View collected logs
+journalctl -u log-collector.service
 ```
 
-### 2. Configure AIX Servers
+### Manual Collection
 ```bash
-python3 scripts/ssh_setup.py --servers server1,server2,server3
+# Send specific log file to InfluxDB
+/usr/local/bin/send_logs_to_influxdb.sh /var/log/messages system_logs
+
+# Send custom log file
+/usr/local/bin/send_logs_to_influxdb.sh /path/to/your/logfile custom_logs
 ```
 
-### 3. Start Services
+## Data Organization
+
+- **Organization**: aixdatagraph
+- **Bucket**: logs
+- **Retention**: 30 days
+- **Default Dashboard**: AIX Logs Dashboard
+
+## Useful Commands
+
+### Service Management
 ```bash
-sudo systemctl start aix-log-collector
-sudo systemctl start grafana-server
+# Check service status
+systemctl status influxdb grafana-server
+
+# Start services
+systemctl start influxdb grafana-server
+
+# Stop services
+systemctl stop influxdb grafana-server
+
+# Restart services
+systemctl restart influxdb grafana-server
+
+# Enable auto-start
+systemctl enable influxdb grafana-server
 ```
 
-### 4. Access Grafana
-Open http://localhost:3000 in your browser
-- Username: admin
-- Password: admin (change on first login)
+### Logs and Debugging
+```bash
+# View InfluxDB logs
+journalctl -u influxdb -f
 
-## Directory Structure
+# View Grafana logs
+journalctl -u grafana-server -f
 
-```
-AIXdatagraph/
-├── collector/          # Python log collector
-├── grafana/           # Grafana configuration and dashboards
-├── scripts/           # Setup and utility scripts
-├── systemd/           # Systemd service files
-├── docker/            # Docker deployment files
-├── config/            # Configuration files
-└── docs/              # Documentation
+# Check InfluxDB health
+curl http://localhost:8086/ping
+
+# Check Grafana health
+curl http://localhost:3000/api/health
 ```
 
-## Configuration
+### Data Management
+```bash
+# Access InfluxDB CLI
+influx
 
-Edit `config/config.yaml` to customize:
-- AIX server list
-- Collection intervals
-- Log retention policies
-- Grafana settings
+# List organizations
+influx org list
 
-## Monitoring
+# List buckets
+influx bucket list
 
-The system provides:
-- Real-time error report monitoring
-- System log analysis
-- Historical trend analysis
-- Alert notifications
-- Custom dashboards
+# Query data
+influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
+```
+
+## Configuration Files
+
+### InfluxDB
+- Main config: `/etc/influxdb/influxdb.conf`
+- Service file: `/etc/systemd/system/influxdb.service`
+- Log rotation: `/etc/logrotate.d/influxdb`
+
+### Grafana
+- Main config: `/etc/grafana/grafana.ini`
+- Service file: `/etc/systemd/system/grafana-server.service`
+- Data sources: `/etc/grafana/provisioning/datasources/`
+- Dashboards: `/etc/grafana/provisioning/dashboards/`
+- Log rotation: `/etc/logrotate.d/grafana`
+
+## Security Considerations
+
+1. **Change default passwords** immediately after installation
+2. **Configure firewall** rules for production use
+3. **Enable HTTPS** for production deployments
+4. **Set up proper authentication** and authorization
+5. **Regular backups** of configuration and data
 
 ## Troubleshooting
 
-See `docs/troubleshooting.md` for common issues and solutions.
+### Common Issues
 
-## License
+1. **Services won't start**
+   ```bash
+   # Check logs
+   journalctl -u influxdb -n 50
+   journalctl -u grafana-server -n 50
+   
+   # Check ports
+   netstat -tlnp | grep -E ':(8086|3000)'
+   ```
 
-MIT License - see LICENSE file for details.
+2. **Permission issues**
+   ```bash
+   # Fix ownership
+   chown -R influxdb:influxdb /var/lib/influxdb /var/log/influxdb
+   chown -R grafana:grafana /var/lib/grafana /var/log/grafana
+   ```
 
+3. **SELinux issues**
+   ```bash
+   # Check SELinux status
+   sestatus
+   
+   # Allow network connections
+   setsebool -P httpd_can_network_connect 1
+   ```
+
+4. **Firewall issues**
+   ```bash
+   # Open required ports
+   firewall-cmd --permanent --add-port=8086/tcp
+   firewall-cmd --permanent --add-port=3000/tcp
+   firewall-cmd --reload
+   ```
+
+### Getting Help
+
+- Check service logs: `journalctl -u <service-name> -f`
+- Verify configuration files for syntax errors
+- Test connectivity: `curl http://localhost:<port>`
+- Check system resources: `top`, `df -h`, `free -h`
+
+## Next Steps
+
+1. **Secure the installation** by changing passwords and enabling HTTPS
+2. **Import additional dashboards** for specific use cases
+3. **Configure log sources** for your specific environment
+4. **Set up alerts** and notifications
+5. **Create custom visualizations** for your data
+6. **Set up backup and recovery** procedures
+
+## Support
+
+For issues specific to this installation:
+1. Check the troubleshooting section above
+2. Review service logs for error messages
+3. Verify system requirements are met
+4. Ensure network connectivity is available
+
+For InfluxDB and Grafana specific issues, refer to their official documentation:
+- [InfluxDB Documentation](https://docs.influxdata.com/)
+- [Grafana Documentation](https://grafana.com/docs/)
