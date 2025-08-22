@@ -35,6 +35,73 @@ print_header() {
     echo -e "${BLUE}[STEP]${NC} $1"
 }
 
+# Function to check if services are already installed
+check_existing_installation() {
+    local influxdb_installed=false
+    local grafana_installed=false
+    
+    if [[ -f "/opt/influxdb/influxd" && -f "/usr/local/bin/influxd" ]]; then
+        influxdb_installed=true
+        print_status "InfluxDB appears to be already installed"
+    fi
+    
+    if [[ -f "/usr/share/grafana/grafana-server" && -f "/usr/local/bin/grafana-server" ]]; then
+        grafana_installed=true
+        print_status "Grafana appears to be already installed"
+    fi
+    
+    if [[ "$influxdb_installed" == "true" && "$grafana_installed" == "true" ]]; then
+        print_warning "Both InfluxDB and Grafana appear to be already installed"
+        read -p "Do you want to reinstall? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            print_status "Skipping installation. Checking service status..."
+            systemctl status influxdb grafana-server 2>/dev/null || print_warning "Services not found, but binaries exist"
+            exit 0
+        fi
+    fi
+}
+
+# Function to check network connectivity
+check_network_connectivity() {
+    print_status "Checking network connectivity..."
+    
+    # Test basic connectivity
+    if ! ping -c 1 -W 5 8.8.8.8 > /dev/null 2>&1; then
+        print_error "No internet connectivity detected"
+        print_status "Please check your network connection and try again"
+        exit 1
+    fi
+    
+    # Test DNS resolution
+    if ! nslookup dl.influxdata.com > /dev/null 2>&1; then
+        print_warning "DNS resolution issues detected"
+        print_status "This may cause download problems"
+    fi
+    
+    print_status "Network connectivity check passed"
+}
+
+# Function to check system requirements
+check_system_requirements() {
+    print_status "Checking system requirements..."
+    
+    # Check available disk space (need at least 1GB)
+    local available_space=$(df /tmp | awk 'NR==2 {print $4}')
+    if [[ $available_space -lt 1048576 ]]; then
+        print_error "Insufficient disk space. Need at least 1GB free space"
+        exit 1
+    fi
+    
+    # Check available memory (need at least 1GB)
+    local available_memory=$(free -m | awk 'NR==2 {print $7}')
+    if [[ $available_memory -lt 1024 ]]; then
+        print_warning "Low memory detected. Installation may be slow"
+    fi
+    
+    print_status "System requirements check passed"
+}
+
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    print_error "This script must be run as root"
@@ -62,6 +129,11 @@ print_status "Detected RHEL $RHEL_VERSION"
 # Detect architecture
 ARCH=$(uname -m)
 print_status "Detected architecture: $ARCH"
+
+# Run pre-installation checks
+check_existing_installation
+check_network_connectivity
+check_system_requirements
 
 if [[ "$ARCH" != "ppc64le" ]]; then
     print_warning "This script is optimized for ppc64le architecture, but detected $ARCH"
@@ -117,40 +189,79 @@ chown -R $INFLUXDB_USER:$INFLUXDB_GROUP $INFLUXDB_LOG
 print_status "Downloading InfluxDB ${INFLUXDB_VERSION} for Power architecture..."
 cd /tmp
 
-# Try different sources for Power architecture
-INFLUX_DOWNLOADED=false
+# Check if files already exist
+if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
+    print_status "InfluxDB amd64 binary already exists, using existing file"
+    INFLUX_DOWNLOADED=true
+    INFLUX_ARCH="amd64"
+elif [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz" ]]; then
+    print_status "InfluxDB ppc64le binary already exists, using existing file"
+    INFLUX_DOWNLOADED=true
+    INFLUX_ARCH="ppc64le"
+else
+    # Try different sources for Power architecture
+    INFLUX_DOWNLOADED=false
+    INFLUX_ARCH=""
 
-# Try official InfluxDB ppc64le binary
-if command -v wget > /dev/null 2>&1; then
-    wget -q https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
-    if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz" ]]; then
-        tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
-        cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influxd $INFLUXDB_HOME/
-        cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influx $INFLUXDB_HOME/
-        INFLUX_DOWNLOADED=true
-    fi
-fi
-
-# If ppc64le not available, try amd64 with emulation
-if [[ "$INFLUX_DOWNLOADED" == "false" ]]; then
-    print_warning "Power-specific InfluxDB binary not available, trying amd64 with emulation..."
+    # Try official InfluxDB ppc64le binary first
+    print_status "Attempting to download ppc64le binary..."
     if command -v wget > /dev/null 2>&1; then
-        wget -q https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+        if wget -q --timeout=30 --tries=3 https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz; then
+            if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz" ]]; then
+                INFLUX_DOWNLOADED=true
+                INFLUX_ARCH="ppc64le"
+                print_status "Successfully downloaded ppc64le binary"
+            fi
+        fi
     elif command -v curl > /dev/null 2>&1; then
-        curl -L -o influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+        if curl -L --connect-timeout 30 --max-time 300 -o influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz; then
+            if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz" ]]; then
+                INFLUX_DOWNLOADED=true
+                INFLUX_ARCH="ppc64le"
+                print_status "Successfully downloaded ppc64le binary"
+            fi
+        fi
     fi
-    
-    if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
-        tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
-        cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influxd $INFLUXDB_HOME/
-        cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influx $INFLUXDB_HOME/
-        INFLUX_DOWNLOADED=true
+
+    # If ppc64le not available, try amd64 with emulation
+    if [[ "$INFLUX_DOWNLOADED" == "false" ]]; then
+        print_warning "Power-specific InfluxDB binary not available, trying amd64 with emulation..."
+        if command -v wget > /dev/null 2>&1; then
+            if wget -q --timeout=30 --tries=3 https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz; then
+                if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
+                    INFLUX_DOWNLOADED=true
+                    INFLUX_ARCH="amd64"
+                    print_status "Successfully downloaded amd64 binary"
+                fi
+            fi
+        elif command -v curl > /dev/null 2>&1; then
+            if curl -L --connect-timeout 30 --max-time 300 -o influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz https://dl.influxdata.com/influxdb/releases/influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz; then
+                if [[ -f "influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz" ]]; then
+                    INFLUX_DOWNLOADED=true
+                    INFLUX_ARCH="amd64"
+                    print_status "Successfully downloaded amd64 binary"
+                fi
+            fi
+        fi
     fi
 fi
 
 if [[ "$INFLUX_DOWNLOADED" == "false" ]]; then
     print_error "Failed to download InfluxDB binary"
+    print_status "Please check network connectivity and try again"
     exit 1
+fi
+
+# Extract and install InfluxDB
+print_status "Extracting and installing InfluxDB ${INFLUX_ARCH} binary..."
+if [[ "$INFLUX_ARCH" == "ppc64le" ]]; then
+    tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-ppc64le.tar.gz
+    cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influxd $INFLUXDB_HOME/
+    cp influxdb2-${INFLUXDB_VERSION}-linux-ppc64le/influx $INFLUXDB_HOME/
+elif [[ "$INFLUX_ARCH" == "amd64" ]]; then
+    tar -xzf influxdb2-${INFLUXDB_VERSION}-linux-amd64.tar.gz
+    cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influxd $INFLUXDB_HOME/
+    cp influxdb2-${INFLUXDB_VERSION}-linux-amd64/influx $INFLUXDB_HOME/
 fi
 
 # Make binaries executable
@@ -305,38 +416,77 @@ chown -R $GRAFANA_USER:$GRAFANA_GROUP $GRAFANA_LOG
 print_status "Downloading Grafana ${GRAFANA_VERSION} for Power architecture..."
 cd /tmp
 
-# Try different sources for Power architecture
-GRAFANA_DOWNLOADED=false
+# Check if files already exist
+if [[ -f "grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz" ]]; then
+    print_status "Grafana amd64 binary already exists, using existing file"
+    GRAFANA_DOWNLOADED=true
+    GRAFANA_ARCH="amd64"
+elif [[ -f "grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz" ]]; then
+    print_status "Grafana ppc64le binary already exists, using existing file"
+    GRAFANA_DOWNLOADED=true
+    GRAFANA_ARCH="ppc64le"
+else
+    # Try different sources for Power architecture
+    GRAFANA_DOWNLOADED=false
+    GRAFANA_ARCH=""
 
-# Try official Grafana ppc64le binary
-if command -v wget > /dev/null 2>&1; then
-    wget -q https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz
-    if [[ -f "grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz" ]]; then
-        tar -xzf grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz
-        cd grafana-${GRAFANA_VERSION}
-        GRAFANA_DOWNLOADED=true
-    fi
-fi
-
-# If ppc64le not available, try amd64 with emulation
-if [[ "$GRAFANA_DOWNLOADED" == "false" ]]; then
-    print_warning "Power-specific Grafana binary not available, trying amd64 with emulation..."
+    # Try official Grafana ppc64le binary first
+    print_status "Attempting to download Grafana ppc64le binary..."
     if command -v wget > /dev/null 2>&1; then
-        wget -q https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+        if wget -q --timeout=30 --tries=3 https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz; then
+            if [[ -f "grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz" ]]; then
+                GRAFANA_DOWNLOADED=true
+                GRAFANA_ARCH="ppc64le"
+                print_status "Successfully downloaded Grafana ppc64le binary"
+            fi
+        fi
     elif command -v curl > /dev/null 2>&1; then
-        curl -L -o grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+        if curl -L --connect-timeout 30 --max-time 300 -o grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz; then
+            if [[ -f "grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz" ]]; then
+                GRAFANA_DOWNLOADED=true
+                GRAFANA_ARCH="ppc64le"
+                print_status "Successfully downloaded Grafana ppc64le binary"
+            fi
+        fi
     fi
-    
-    if [[ -f "grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz" ]]; then
-        tar -xzf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
-        cd grafana-${GRAFANA_VERSION}
-        GRAFANA_DOWNLOADED=true
+
+    # If ppc64le not available, try amd64 with emulation
+    if [[ "$GRAFANA_DOWNLOADED" == "false" ]]; then
+        print_warning "Power-specific Grafana binary not available, trying amd64 with emulation..."
+        if command -v wget > /dev/null 2>&1; then
+            if wget -q --timeout=30 --tries=3 https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz; then
+                if [[ -f "grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz" ]]; then
+                    GRAFANA_DOWNLOADED=true
+                    GRAFANA_ARCH="amd64"
+                    print_status "Successfully downloaded Grafana amd64 binary"
+                fi
+            fi
+        elif command -v curl > /dev/null 2>&1; then
+            if curl -L --connect-timeout 30 --max-time 300 -o grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz; then
+                if [[ -f "grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz" ]]; then
+                    GRAFANA_DOWNLOADED=true
+                    GRAFANA_ARCH="amd64"
+                    print_status "Successfully downloaded Grafana amd64 binary"
+                fi
+            fi
+        fi
     fi
 fi
 
 if [[ "$GRAFANA_DOWNLOADED" == "false" ]]; then
     print_error "Failed to download Grafana binary"
+    print_status "Please check network connectivity and try again"
     exit 1
+fi
+
+# Extract and install Grafana
+print_status "Extracting and installing Grafana ${GRAFANA_ARCH} binary..."
+if [[ "$GRAFANA_ARCH" == "ppc64le" ]]; then
+    tar -xzf grafana-${GRAFANA_VERSION}.linux-ppc64le.tar.gz
+    cd grafana-${GRAFANA_VERSION}
+elif [[ "$GRAFANA_ARCH" == "amd64" ]]; then
+    tar -xzf grafana-${GRAFANA_VERSION}.linux-amd64.tar.gz
+    cd grafana-${GRAFANA_VERSION}
 fi
 
 # Copy files to installation directory
@@ -903,6 +1053,64 @@ rm -f /tmp/setup_influxdb.sh
 rm -rf /tmp/influxdb2-${INFLUXDB_VERSION}-*
 rm -rf /tmp/grafana-${GRAFANA_VERSION}
 
+# Function to verify installation
+verify_installation() {
+    print_header "Verifying installation..."
+    
+    local all_good=true
+    
+    # Check InfluxDB
+    if [[ -f "/opt/influxdb/influxd" ]]; then
+        print_status "✓ InfluxDB binary installed"
+    else
+        print_error "✗ InfluxDB binary not found"
+        all_good=false
+    fi
+    
+    if systemctl is-active influxdb > /dev/null 2>&1; then
+        print_status "✓ InfluxDB service running"
+    else
+        print_error "✗ InfluxDB service not running"
+        all_good=false
+    fi
+    
+    # Check Grafana
+    if [[ -f "/usr/share/grafana/grafana-server" ]]; then
+        print_status "✓ Grafana binary installed"
+    else
+        print_error "✗ Grafana binary not found"
+        all_good=false
+    fi
+    
+    if systemctl is-active grafana-server > /dev/null 2>&1; then
+        print_status "✓ Grafana service running"
+    else
+        print_error "✗ Grafana service not running"
+        all_good=false
+    fi
+    
+    # Check web interfaces
+    if curl -s http://localhost:8086/ping > /dev/null 2>&1; then
+        print_status "✓ InfluxDB web interface accessible"
+    else
+        print_error "✗ InfluxDB web interface not accessible"
+        all_good=false
+    fi
+    
+    if curl -s http://localhost:3000/api/health > /dev/null 2>&1; then
+        print_status "✓ Grafana web interface accessible"
+    else
+        print_error "✗ Grafana web interface not accessible"
+        all_good=false
+    fi
+    
+    if [[ "$all_good" == "true" ]]; then
+        print_status "✓ All components verified successfully"
+    else
+        print_warning "⚠ Some components may need attention"
+    fi
+}
+
 # Final status
 print_header "Installation Complete!"
 echo ""
@@ -920,3 +1128,19 @@ print_warning "IMPORTANT: Change default passwords after first login!"
 echo ""
 print_status "Log collection is configured to run every 5 minutes"
 print_status "Manual log collection: /usr/local/bin/send_logs_to_influxdb.sh <log_file>"
+
+# Verify installation
+verify_installation
+
+echo ""
+print_status "Installation summary:"
+echo "- Architecture: $ARCH"
+echo "- InfluxDB version: $INFLUXDB_VERSION"
+echo "- Grafana version: $GRAFANA_VERSION"
+echo "- Installation method: Native (Power optimized)"
+echo ""
+print_status "For troubleshooting, check:"
+echo "- Service logs: journalctl -u influxdb -f"
+echo "- Service logs: journalctl -u grafana-server -f"
+echo "- Configuration: /etc/influxdb/influxdb.conf"
+echo "- Configuration: /etc/grafana/grafana.ini"
