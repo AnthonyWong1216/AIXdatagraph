@@ -53,8 +53,23 @@ sudo dnf update -y
 # Install required packages
 print_header "Installing Required Packages"
 print_status "Installing system packages..."
-sudo dnf install -y python3 python3-pip python3-devel gcc openssl-devel libffi-devel
-sudo dnf install -y wget curl git jq unzip
+sudo dnf install -y python3 python3-pip python3-devel gcc gcc-c++ \
+    openssl-devel libffi-devel wget curl git jq unzip \
+    python3-wheel python3-numpy python3-pandas \
+    make automake patch zlib-devel bzip2-devel readline-devel sqlite-devel \
+    xz-devel libuuid-devel gdbm-devel libnsl2-devel
+
+# Upgrade pip to latest version
+print_status "Upgrading pip..."
+python3 -m pip install --user --upgrade pip setuptools wheel
+
+# Install Python dependencies
+print_status "Installing Python packages..."
+python3 -m pip install --user pandas numpy bcrypt --no-cache-dir
+
+# Install remaining requirements
+print_status "Installing remaining Python packages..."
+python3 -m pip install --user -r requirements.txt --no-cache-dir
 
 # Install Docker/Podman
 print_header "Installing Container Runtime"
@@ -114,11 +129,6 @@ for dir in "${PROJECT_DIRS[@]}"; do
         print_status "Directory already exists: $dir"
     fi
 done
-
-# Install Python dependencies
-print_header "Installing Python Dependencies"
-print_status "Installing Python packages..."
-pip3 install --user -r requirements.txt
 
 # Setup SSH keys
 print_header "SSH Key Setup"
