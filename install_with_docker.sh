@@ -102,9 +102,60 @@ chown -R 1000:1000 /opt/aixdatagraph/influxdb
 
 # Step 3: Create Docker Compose file
 print_header "Creating Docker Compose configuration..."
-cat > /opt/aixdatagraph/docker-compose.yml << 'EOF'
-version: '3.8'
 
+# Check if we're on ppc64le architecture
+if [[ "$ARCH" == "ppc64le" ]]; then
+    print_warning "Detected ppc64le architecture - using alternative images for Power compatibility"
+    
+    cat > /opt/aixdatagraph/docker-compose.yml << 'EOF'
+services:
+  influxdb:
+    image: quay.io/influxdb/influxdb:2.7.1
+    platform: linux/amd64
+    container_name: aixdatagraph_influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=aixdatagraph
+      - DOCKER_INFLUXDB_INIT_BUCKET=logs
+      - DOCKER_INFLUXDB_INIT_RETENTION=30d
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=your-super-secret-auth-token
+    volumes:
+      - ./influxdb/data:/var/lib/influxdb2
+      - ./influxdb/config:/etc/influxdb2
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    platform: linux/amd64
+    container_name: aixdatagraph_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+      - ./grafana/config/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - monitoring
+    depends_on:
+      - influxdb
+
+networks:
+  monitoring:
+    driver: bridge
+EOF
+else
+    cat > /opt/aixdatagraph/docker-compose.yml << 'EOF'
 services:
   influxdb:
     image: influxdb:2.7.1
@@ -149,6 +200,7 @@ networks:
   monitoring:
     driver: bridge
 EOF
+fi
 
 # Step 4: Create Grafana configuration
 print_header "Creating Grafana configuration..."

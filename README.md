@@ -10,19 +10,25 @@ The monitoring stack consists of:
 
 ## Installation Scripts
 
-### 1. Docker Installation (Recommended for IBM Power)
+### 1. Power Native Installation (Recommended for IBM Power)
+```bash
+sudo bash install_power_native.sh
+```
+This script installs InfluxDB and Grafana natively on IBM Power servers with Power-specific optimizations and fallback support.
+
+### 2. Docker Installation (Alternative for IBM Power)
 ```bash
 sudo bash install_with_docker.sh
 ```
-This script installs InfluxDB and Grafana using Docker containers, which is the most reliable method for IBM Power (ppc64le) architecture.
+This script installs InfluxDB and Grafana using Docker containers with platform emulation for Power architecture.
 
-### 2. Complete Native Installation
+### 3. Complete Native Installation (x86_64)
 ```bash
 sudo bash install_monitoring_stack.sh
 ```
 This script installs both InfluxDB and Grafana natively, configures them to work together, and sets up automatic log collection.
 
-### 3. Individual Native Installations
+### 4. Individual Native Installations
 ```bash
 # Install InfluxDB only
 sudo bash install_influxdb.sh
@@ -183,7 +189,16 @@ influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
 
 ### Common Issues
 
-1. **Docker Compose command not found**
+1. **No matching manifest for linux/ppc64le**
+   ```bash
+   # Use the Power native installation instead:
+   sudo bash install_power_native.sh
+   
+   # Or try Docker with platform emulation:
+   # The Docker script now includes platform: linux/amd64 for Power servers
+   ```
+
+2. **Docker Compose command not found**
    ```bash
    # For newer Docker versions, use:
    docker compose up -d
@@ -195,7 +210,7 @@ influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
    /opt/aixdatagraph/start.sh
    ```
 
-2. **Services won't start**
+3. **Services won't start**
    ```bash
    # Check logs
    journalctl -u influxdb -n 50
@@ -205,14 +220,14 @@ influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
    netstat -tlnp | grep -E ':(8086|3000)'
    ```
 
-3. **Permission issues**
+4. **Permission issues**
    ```bash
    # Fix ownership
    chown -R influxdb:influxdb /var/lib/influxdb /var/log/influxdb
    chown -R grafana:grafana /var/lib/grafana /var/log/grafana
    ```
 
-4. **SELinux issues**
+5. **SELinux issues**
    ```bash
    # Check SELinux status
    sestatus
@@ -221,7 +236,7 @@ influx query 'from(bucket:"logs") |> range(start: -1h) |> count()'
    setsebool -P httpd_can_network_connect 1
    ```
 
-5. **Firewall issues**
+6. **Firewall issues**
    ```bash
    # Open required ports
    firewall-cmd --permanent --add-port=8086/tcp
