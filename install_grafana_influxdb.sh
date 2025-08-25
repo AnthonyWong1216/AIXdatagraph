@@ -69,24 +69,111 @@ if [ -f "/etc/systemd/system/grafana-server.service" ]; then
     # Backup original file
     cp /etc/systemd/system/grafana-server.service /etc/systemd/system/grafana-server.service.backup
     
-    # Update ExecStart line
+    # Update ExecStart line and add WorkingDirectory
     sed -i 's|^ExecStart=.*|ExecStart=/usr/sbin/grafana-server --config=/etc/grafana/grafana.ini --homepath=/usr/share/grafana|' /etc/systemd/system/grafana-server.service
+    
+    # Add WorkingDirectory if it doesn't exist
+    if ! grep -q "^WorkingDirectory=" /etc/systemd/system/grafana-server.service; then
+        # Add WorkingDirectory after [Service] section
+        sed -i '/^\[Service\]/a WorkingDirectory=/usr/share/grafana' /etc/systemd/system/grafana-server.service
+    else
+        # Update existing WorkingDirectory
+        sed -i 's|^WorkingDirectory=.*|WorkingDirectory=/usr/share/grafana|' /etc/systemd/system/grafana-server.service
+    fi
     
     log_message "Grafana service file updated successfully."
 else
     log_message "WARNING: Grafana service file not found at /etc/systemd/system/grafana-server.service"
 fi
 
-# Step 4: Set ownership and permissions for Grafana
-log_message "Setting ownership and permissions for Grafana..."
-chown -R grafana:grafana /usr/share/grafana /var/lib/grafana /var/log/grafana
-chmod -R u+rwX /usr/share/grafana /var/lib/grafana /var/log/grafana
+# Step 4: Ensure Grafana configuration exists and set ownership/permissions
+log_message "Ensuring Grafana configuration and setting ownership/permissions..."
 
-# Step 5: Reload systemd daemon
+# Create necessary directories if they don't exist
+mkdir -p /etc/grafana
+mkdir -p /usr/share/grafana
+mkdir -p /var/lib/grafana
+mkdir -p /var/log/grafana
+
+# Create default grafana.ini if it doesn't exist
+if [ ! -f "/etc/grafana/grafana.ini" ]; then
+    log_message "Creating default grafana.ini configuration..."
+    cat > /etc/grafana/grafana.ini << 'EOF'
+[paths]
+data = /var/lib/grafana
+logs = /var/log/grafana
+plugins = /var/lib/grafana/plugins
+provisioning = /etc/grafana/provisioning
+
+[server]
+http_port = 3000
+domain = localhost
+root_url = %(protocol)s://%(domain)s:%(http_port)s/
+
+[database]
+type = sqlite3
+path = /var/lib/grafana/grafana.db
+
+[security]
+admin_user = admin
+admin_password = admin
+
+[users]
+allow_sign_up = false
+
+[auth.anonymous]
+enabled = false
+EOF
+fi
+
+# Set ownership and permissions
+log_message "Setting ownership and permissions for Grafana..."
+chown -R grafana:grafana /usr/share/grafana /var/lib/grafana /var/log/grafana /etc/grafana
+chmod -R u+rwX /usr/share/grafana /var/lib/grafana /var/log/grafana /etc/grafana
+
+# Step 5: Create InfluxDB database and configure Grafana datasource
+log_message "Creating InfluxDB database 'NewDB' and configuring Grafana datasource..."
+
+# Wait for InfluxDB to be ready
+sleep 5
+
+# Create InfluxDB database
+log_message "Creating InfluxDB database 'NewDB'..."
+if command -v influx &> /dev/null; then
+    influx -execute "CREATE DATABASE NewDB" || log_message "WARNING: Failed to create database, it may already exist"
+else
+    log_message "WARNING: influx command not found, database creation skipped"
+fi
+
+# Create Grafana datasource provisioning directory
+mkdir -p /etc/grafana/provisioning/datasources
+
+# Create InfluxDB datasource configuration
+log_message "Creating Grafana datasource configuration for InfluxDB..."
+cat > /etc/grafana/provisioning/datasources/influxdb.yaml << 'EOF'
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: http://localhost:8086
+    database: NewDB
+    isDefault: true
+    editable: true
+    jsonData:
+      version: Flux
+      organization: my-org
+      defaultBucket: NewDB
+    secureJsonData:
+      token: ""
+EOF
+
+# Step 6: Reload systemd daemon
 log_message "Reloading systemd daemon..."
 systemctl daemon-reload
 
-# Step 6: Start and enable services
+# Step 7: Start and enable services
 log_message "Starting and enabling InfluxDB service..."
 systemctl start influxdb
 systemctl enable influxdb
@@ -95,7 +182,7 @@ log_message "Starting and enabling Grafana service..."
 systemctl start grafana-server
 systemctl enable grafana-server
 
-# Step 7: Check service status
+# Step 8: Check service status
 log_message "Checking service status..."
 echo "=== InfluxDB Status ==="
 systemctl status influxdb --no-pager -l
@@ -104,7 +191,7 @@ echo ""
 echo "=== Grafana Status ==="
 systemctl status grafana-server --no-pager -l
 
-# Step 8: Ensure Grafana is running and reset admin password
+# Step 9: Ensure Grafana is running and reset admin password
 log_message "Ensuring Grafana is running and resetting admin password..."
 # Wait a bit for Grafana to fully start up
 sleep 10
@@ -134,10 +221,15 @@ else
         fi
     else
         log_message "ERROR: Failed to start Grafana service. Please check logs and start manually."
+        log_message "Troubleshooting steps:"
+        log_message "1. Check Grafana logs: journalctl -u grafana-server -f"
+        log_message "2. Verify configuration: ls -la /etc/grafana/"
+        log_message "3. Check permissions: ls -la /usr/share/grafana /var/lib/grafana /var/log/grafana"
+        log_message "4. Try manual start: sudo -u grafana /usr/sbin/grafana-server --config=/etc/grafana/grafana.ini --homepath=/usr/share/grafana"
     fi
 fi
 
-# Step 9: Configure firewall
+# Step 10: Configure firewall
 log_message "Configuring firewall for InfluxDB (port 8086) and Grafana (port 3000)..."
 firewall-cmd --add-port=8086/tcp --permanent
 firewall-cmd --add-port=3000/tcp --permanent
@@ -145,7 +237,20 @@ firewall-cmd --reload
 
 log_message "Firewall configured successfully."
 
-# Step 10: Display access information
+# Step 11: Verify InfluxDB database and connection
+log_message "Verifying InfluxDB database and connection..."
+if command -v influx &> /dev/null; then
+    if influx -execute "SHOW DATABASES" | grep -q "NewDB"; then
+        log_message "SUCCESS: InfluxDB database 'NewDB' is ready"
+    else
+        log_message "WARNING: InfluxDB database 'NewDB' not found, attempting to create..."
+        influx -execute "CREATE DATABASE NewDB" && log_message "Database 'NewDB' created successfully"
+    fi
+else
+    log_message "WARNING: influx command not available for verification"
+fi
+
+# Step 12: Display access information
 log_message "Installation completed successfully!"
 echo ""
 echo "=== Access Information ==="
