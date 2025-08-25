@@ -160,12 +160,17 @@ datasources:
     isDefault: true
     editable: true
     jsonData:
-      version: Flux
-      organization: my-org
-      defaultBucket: NewDB
+      version: InfluxQL
+      httpMethod: GET
+      timeInterval: 10s
     secureJsonData:
-      token: ""
+      password: ""
 EOF
+
+# Restart Grafana to apply datasource configuration
+log_message "Restarting Grafana to apply datasource configuration..."
+systemctl restart grafana-server
+sleep 5
 
 # Step 6: Reload systemd daemon
 log_message "Reloading systemd daemon..."
@@ -232,6 +237,14 @@ if command -v influx &> /dev/null; then
         log_message "WARNING: InfluxDB database 'NewDB' not found, attempting to create..."
         influx -execute "CREATE DATABASE NewDB" && log_message "Database 'NewDB' created successfully"
     fi
+    
+    # Test InfluxDB connection
+    log_message "Testing InfluxDB connection..."
+    if curl -s http://localhost:8086/ping > /dev/null; then
+        log_message "SUCCESS: InfluxDB is responding on port 8086"
+    else
+        log_message "ERROR: InfluxDB is not responding on port 8086"
+    fi
 else
     log_message "WARNING: influx command not available for verification"
 fi
@@ -249,3 +262,12 @@ echo "Password: P@ssw0rd"
 echo ""
 echo "Services are now running and enabled to start on boot."
 echo "Check service status with: systemctl status influxdb grafana-server"
+echo ""
+echo "=== Troubleshooting InfluxDB Connection ==="
+echo "If you see 'Error reading InfluxDB' in Grafana:"
+echo "1. Verify InfluxDB is running: systemctl status influxdb"
+echo "2. Test InfluxDB connection: curl http://localhost:8086/ping"
+echo "3. Check InfluxDB logs: journalctl -u influxdb -f"
+echo "4. Verify database exists: influx -execute 'SHOW DATABASES'"
+echo "5. Restart Grafana: systemctl restart grafana-server"
+echo "6. Check Grafana logs: journalctl -u grafana-server -f"
