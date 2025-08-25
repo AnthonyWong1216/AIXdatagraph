@@ -25,17 +25,53 @@ INFLUXDB_DB="NewDB"
 mkdir -p "$LOG_DIR"
 mkdir -p "$PROCESSED_DIR"
 
+# Function to test netcat syntax
+test_netcat() {
+    log_message "Testing netcat syntax..."
+    
+    # Test different netcat syntax options
+    if timeout 2 nc -l 9999 >/dev/null 2>&1 & then
+        NC_SYNTAX="nc -l"
+        kill %1 2>/dev/null
+        log_message "SUCCESS: Using 'nc -l' syntax"
+        return 0
+    elif timeout 2 nc -l -p 9999 >/dev/null 2>&1 & then
+        NC_SYNTAX="nc -l -p"
+        kill %1 2>/dev/null
+        log_message "SUCCESS: Using 'nc -l -p' syntax"
+        return 0
+    elif timeout 2 netcat -l 9999 >/dev/null 2>&1 & then
+        NC_SYNTAX="netcat -l"
+        kill %1 2>/dev/null
+        log_message "SUCCESS: Using 'netcat -l' syntax"
+        return 0
+    elif timeout 2 netcat -l -p 9999 >/dev/null 2>&1 & then
+        NC_SYNTAX="netcat -l -p"
+        kill %1 2>/dev/null
+        log_message "SUCCESS: Using 'netcat -l -p' syntax"
+        return 0
+    else
+        log_message "ERROR: No working netcat syntax found"
+        return 1
+    fi
+}
+
 # Function to start network listeners
 start_listeners() {
     log_message "Starting network listeners for AIX log data..."
+    
+    # Test netcat syntax first
+    if ! test_netcat; then
+        log_message "ERROR: Cannot start listeners - netcat not working"
+        return 1
+    fi
     
     # Start syslog listener in background
     log_message "Starting syslog listener on port $SYSLOG_PORT..."
     (
         while true; do
-            nc -l -p "$SYSLOG_PORT" >> "$LOG_DIR/syslog_raw.log" 2>/dev/null || \
-            netcat -l -p "$SYSLOG_PORT" >> "$LOG_DIR/syslog_raw.log" 2>/dev/null || \
-            log_message "WARNING: nc/netcat not available for syslog listener"
+            $NC_SYNTAX "$SYSLOG_PORT" >> "$LOG_DIR/syslog_raw.log" 2>/dev/null || \
+            log_message "WARNING: syslog listener failed"
             sleep 1
         done
     ) &
@@ -45,9 +81,8 @@ start_listeners() {
     log_message "Starting errpt listener on port $ERRPT_PORT..."
     (
         while true; do
-            nc -l -p "$ERRPT_PORT" >> "$LOG_DIR/errpt_raw.log" 2>/dev/null || \
-            netcat -l -p "$ERRPT_PORT" >> "$LOG_DIR/errpt_raw.log" 2>/dev/null || \
-            log_message "WARNING: nc/netcat not available for errpt listener"
+            $NC_SYNTAX "$ERRPT_PORT" >> "$LOG_DIR/errpt_raw.log" 2>/dev/null || \
+            log_message "WARNING: errpt listener failed"
             sleep 1
         done
     ) &
