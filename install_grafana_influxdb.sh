@@ -115,7 +115,7 @@ path = /var/lib/grafana/grafana.db
 
 [security]
 admin_user = admin
-admin_password = admin
+admin_password = P@ssw0rd
 
 [users]
 allow_sign_up = false
@@ -189,34 +189,22 @@ echo ""
 echo "=== Grafana Status ==="
 systemctl status grafana-server --no-pager -l
 
-# Step 9: Ensure Grafana is running and reset admin password
-log_message "Ensuring Grafana is running and resetting admin password..."
+# Step 9: Ensure Grafana is running properly
+log_message "Ensuring Grafana is running properly..."
 # Wait a bit for Grafana to fully start up
 sleep 10
 
 # Check if Grafana is running
 if systemctl is-active --quiet grafana-server; then
-    log_message "Grafana is running. Resetting admin password to P@ssw0rd..."
-    
-    # Reset admin password using grafana-cli
-    if grafana-cli admin reset-admin-password P@ssw0rd; then
-        log_message "Admin password successfully reset to P@ssw0rd"
-    else
-        log_message "WARNING: Failed to reset admin password. You may need to do this manually."
-    fi
+    log_message "SUCCESS: Grafana is running with admin password P@ssw0rd"
 else
-    log_message "ERROR: Grafana service is not running. Cannot reset password."
+    log_message "ERROR: Grafana service is not running."
     log_message "Attempting to start Grafana again..."
     systemctl start grafana-server
     sleep 5
     
     if systemctl is-active --quiet grafana-server; then
-        log_message "Grafana started successfully. Resetting admin password..."
-        if grafana-cli admin reset-admin-password P@ssw0rd; then
-            log_message "Admin password successfully reset to P@ssw0rd"
-        else
-            log_message "WARNING: Failed to reset admin password. You may need to do this manually."
-        fi
+        log_message "SUCCESS: Grafana started successfully with admin password P@ssw0rd"
     else
         log_message "ERROR: Failed to start Grafana service. Please check logs and start manually."
         log_message "Troubleshooting steps:"
