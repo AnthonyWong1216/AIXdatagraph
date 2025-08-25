@@ -104,7 +104,40 @@ echo ""
 echo "=== Grafana Status ==="
 systemctl status grafana-server --no-pager -l
 
-# Step 8: Configure firewall
+# Step 8: Ensure Grafana is running and reset admin password
+log_message "Ensuring Grafana is running and resetting admin password..."
+# Wait a bit for Grafana to fully start up
+sleep 10
+
+# Check if Grafana is running
+if systemctl is-active --quiet grafana-server; then
+    log_message "Grafana is running. Resetting admin password to P@ssw0rd..."
+    
+    # Reset admin password using grafana-cli
+    if grafana-cli admin reset-admin-password P@ssw0rd; then
+        log_message "Admin password successfully reset to P@ssw0rd"
+    else
+        log_message "WARNING: Failed to reset admin password. You may need to do this manually."
+    fi
+else
+    log_message "ERROR: Grafana service is not running. Cannot reset password."
+    log_message "Attempting to start Grafana again..."
+    systemctl start grafana-server
+    sleep 5
+    
+    if systemctl is-active --quiet grafana-server; then
+        log_message "Grafana started successfully. Resetting admin password..."
+        if grafana-cli admin reset-admin-password P@ssw0rd; then
+            log_message "Admin password successfully reset to P@ssw0rd"
+        else
+            log_message "WARNING: Failed to reset admin password. You may need to do this manually."
+        fi
+    else
+        log_message "ERROR: Failed to start Grafana service. Please check logs and start manually."
+    fi
+fi
+
+# Step 9: Configure firewall
 log_message "Configuring firewall for InfluxDB (port 8086) and Grafana (port 3000)..."
 firewall-cmd --add-port=8086/tcp --permanent
 firewall-cmd --add-port=3000/tcp --permanent
@@ -112,16 +145,16 @@ firewall-cmd --reload
 
 log_message "Firewall configured successfully."
 
-# Step 9: Display access information
+# Step 10: Display access information
 log_message "Installation completed successfully!"
 echo ""
 echo "=== Access Information ==="
 echo "InfluxDB: http://$(hostname -I | awk '{print $1}'):8086"
 echo "Grafana:  http://$(hostname -I | awk '{print $1}'):3000"
 echo ""
-echo "Default Grafana credentials:"
+echo "Grafana credentials:"
 echo "Username: admin"
-echo "Password: admin"
+echo "Password: P@ssw0rd"
 echo ""
 echo "Services are now running and enabled to start on boot."
 echo "Check service status with: systemctl status influxdb grafana-server"
