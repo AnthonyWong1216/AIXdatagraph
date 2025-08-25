@@ -95,10 +95,9 @@ mkdir -p /usr/share/grafana
 mkdir -p /var/lib/grafana
 mkdir -p /var/log/grafana
 
-# Create default grafana.ini if it doesn't exist
-if [ ! -f "/etc/grafana/grafana.ini" ]; then
-    log_message "Creating default grafana.ini configuration..."
-    cat > /etc/grafana/grafana.ini << 'EOF'
+# Create/overwrite grafana.ini configuration
+log_message "Creating/overwriting grafana.ini configuration..."
+cat > /etc/grafana/grafana.ini << 'EOF'
 [paths]
 data = /var/lib/grafana
 logs = /var/log/grafana
@@ -124,7 +123,6 @@ allow_sign_up = false
 [auth.anonymous]
 enabled = false
 EOF
-fi
 
 # Set ownership and permissions
 log_message "Setting ownership and permissions for Grafana..."
