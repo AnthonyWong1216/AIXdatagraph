@@ -129,19 +129,8 @@ log_message "Setting ownership and permissions for Grafana..."
 chown -R grafana:grafana /usr/share/grafana /var/lib/grafana /var/log/grafana /etc/grafana
 chmod -R u+rwX /usr/share/grafana /var/lib/grafana /var/log/grafana /etc/grafana
 
-# Step 5: Create InfluxDB database and configure Grafana datasource
-log_message "Creating InfluxDB database 'NewDB' and configuring Grafana datasource..."
-
-# Wait for InfluxDB to be ready
-sleep 5
-
-# Create InfluxDB database
-log_message "Creating InfluxDB database 'NewDB'..."
-if command -v influx &> /dev/null; then
-    influx -execute "CREATE DATABASE NewDB" || log_message "WARNING: Failed to create database, it may already exist"
-else
-    log_message "WARNING: influx command not found, database creation skipped"
-fi
+# Step 5: Create Grafana datasource provisioning directory and configuration
+log_message "Creating Grafana datasource configuration for InfluxDB..."
 
 # Create Grafana datasource provisioning directory
 mkdir -p /etc/grafana/provisioning/datasources
@@ -167,11 +156,6 @@ datasources:
       password: ""
 EOF
 
-# Restart Grafana to apply datasource configuration
-log_message "Restarting Grafana to apply datasource configuration..."
-systemctl restart grafana-server
-sleep 5
-
 # Step 6: Reload systemd daemon
 log_message "Reloading systemd daemon..."
 systemctl daemon-reload
@@ -180,6 +164,27 @@ systemctl daemon-reload
 log_message "Starting and enabling InfluxDB service..."
 systemctl start influxdb
 systemctl enable influxdb
+
+# Wait for InfluxDB to be ready
+log_message "Waiting for InfluxDB to be ready..."
+sleep 10
+
+# Create InfluxDB database after service is started
+log_message "Creating InfluxDB database 'NewDB'..."
+if command -v influx &> /dev/null; then
+    # Try multiple times in case InfluxDB is still starting up
+    for i in {1..5}; do
+        if influx -execute "CREATE DATABASE NewDB" 2>/dev/null; then
+            log_message "SUCCESS: InfluxDB database 'NewDB' created successfully"
+            break
+        else
+            log_message "Attempt $i: Waiting for InfluxDB to be ready..."
+            sleep 5
+        fi
+    done
+else
+    log_message "WARNING: influx command not found, database creation skipped"
+fi
 
 log_message "Starting and enabling Grafana service..."
 systemctl start grafana-server
