@@ -21,9 +21,28 @@ INFLUXDB_HOST="localhost"
 INFLUXDB_PORT="8086"
 INFLUXDB_DB="NewDB"
 
-# Create necessary directories
-mkdir -p "$LOG_DIR"
-mkdir -p "$PROCESSED_DIR"
+# Create necessary directories (will be created after rsyslog check)
+LOG_DIR="/var/log/aix_logs"
+PROCESSED_DIR="/var/log/aix_processed"
+
+# Function to check for port conflicts
+check_port_conflicts() {
+    log_message "Checking for port conflicts..."
+    
+    # Check if ports are already in use
+    if netstat -tuln 2>/dev/null | grep -q ":$SYSLOG_PORT "; then
+        log_message "WARNING: Port $SYSLOG_PORT is already in use"
+        log_message "This is normal for rsyslog, but may cause conflicts"
+    fi
+    
+    if netstat -tuln 2>/dev/null | grep -q ":$ERRPT_PORT "; then
+        log_message "ERROR: Port $ERRPT_PORT is already in use"
+        log_message "Please free up port $ERRPT_PORT or change ERRPT_PORT in the script"
+        exit 1
+    fi
+    
+    log_message "Port conflict check completed"
+}
 
 # Function to check if rsyslog is installed
 check_rsyslog() {
@@ -41,6 +60,11 @@ check_rsyslog() {
         fi
     fi
     log_message "SUCCESS: rsyslog is available"
+    
+    # Create necessary directories after rsyslog is confirmed
+    mkdir -p "$LOG_DIR"
+    mkdir -p "$PROCESSED_DIR"
+    log_message "Created log directories: $LOG_DIR and $PROCESSED_DIR"
 }
 
 # Function to configure rsyslog
@@ -53,12 +77,14 @@ configure_rsyslog() {
     # Create rsyslog configuration for AIX logs
     cat > /etc/rsyslog.d/aix-logs.conf << EOF
 # AIX Log Collection Configuration
-# Listen on UDP port 514 for syslog data
+# Load required modules
 module(load="imudp")
+module(load="imtcp")
+
+# Listen on UDP port 514 for syslog data
 input(type="imudp" port="$SYSLOG_PORT")
 
 # Listen on TCP port 514 for syslog data
-module(load="imtcp")
 input(type="imtcp" port="$SYSLOG_PORT")
 
 # Listen on TCP port 515 for errpt data
@@ -88,9 +114,9 @@ EOF
     log_message "rsyslog configuration created at /etc/rsyslog.d/aix-logs.conf"
 }
 
-# Function to configure firewall
+# Function to configure firewall and SELinux
 configure_firewall() {
-    log_message "Configuring firewall for AIX log collection..."
+    log_message "Configuring firewall and SELinux for AIX log collection..."
     
     # Check if firewalld is running
     if systemctl is-active --quiet firewalld; then
@@ -128,13 +154,27 @@ configure_firewall() {
         log_message "  - Allow UDP/TCP port $SYSLOG_PORT"
         log_message "  - Allow TCP port $ERRPT_PORT"
     fi
+    
+    # Configure SELinux if present
+    if command -v semanage >/dev/null 2>&1; then
+        log_message "Configuring SELinux..."
+        
+        # Allow rsyslog to bind to custom ports
+        semanage port -a -t syslogd_port_t -p tcp "$ERRPT_PORT" 2>/dev/null || \
+        semanage port -m -t syslogd_port_t -p tcp "$ERRPT_PORT" 2>/dev/null || \
+        log_message "WARNING: Could not configure SELinux port for $ERRPT_PORT"
+        
+        log_message "SELinux configured for port $ERRPT_PORT"
+    else
+        log_message "SELinux not detected or not available"
+    fi
 }
 
 # Function to create log processing script
 create_processor_script() {
     log_message "Creating log processing script..."
     
-    cat > /usr/local/bin/process_aix_logs.sh << 'EOF'
+    cat > /usr/local/bin/process_aix_logs.sh << 'PROCESSOR_EOF'
 #!/bin/bash
 
 # AIX Log Processing Script
@@ -219,7 +259,7 @@ parse_errpt_data() {
     done < "$temp_file"
     
     # Create categorized output
-    cat > "$output_file" << EOF
+    cat > "$output_file" << PARSED_EOF
 === PARSED ERRPT DATA ===
 Hostname: $hostname
 IP Address: $ip_address
@@ -235,7 +275,7 @@ Total Errors: $((hardware_errors + software_errors + operator_errors + unknown_e
 
 === ERROR DETAILS ===
 $(cat "$temp_file")
-EOF
+PARSED_EOF
     
     rm -f "$temp_file"
     
@@ -311,7 +351,7 @@ process_logs() {
 
 # Main processing
 process_logs
-EOF
+PROCESSOR_EOF
     
     chmod +x /usr/local/bin/process_aix_logs.sh
     log_message "Log processing script created at /usr/local/bin/process_aix_logs.sh"
@@ -321,7 +361,7 @@ EOF
 create_processor_service() {
     log_message "Creating systemd service for log processing..."
     
-    cat > /etc/systemd/system/aix-log-processor.service << EOF
+    cat > /etc/systemd/system/aix-log-processor.service << SERVICE_EOF
 [Unit]
 Description=AIX Log Processor Service
 After=rsyslog.service
@@ -334,10 +374,10 @@ User=root
 
 [Install]
 WantedBy=multi-user.target
-EOF
+SERVICE_EOF
     
     # Create timer for periodic processing
-    cat > /etc/systemd/system/aix-log-processor.timer << EOF
+    cat > /etc/systemd/system/aix-log-processor.timer << TIMER_EOF
 [Unit]
 Description=Run AIX Log Processor every 30 seconds
 Requires=aix-log-processor.service
@@ -349,7 +389,7 @@ Unit=aix-log-processor.service
 
 [Install]
 WantedBy=timers.target
-EOF
+TIMER_EOF
     
     systemctl daemon-reload
     systemctl enable aix-log-processor.timer
@@ -362,6 +402,14 @@ EOF
 restart_rsyslog() {
     log_message "Restarting rsyslog service..."
     
+    # Check if rsyslog configuration is valid
+    if rsyslogd -N1 >/dev/null 2>&1; then
+        log_message "rsyslog configuration is valid"
+    else
+        log_message "WARNING: rsyslog configuration may have issues"
+        rsyslogd -N1
+    fi
+    
     if systemctl is-active --quiet rsyslog; then
         systemctl restart rsyslog
         log_message "rsyslog restarted successfully"
@@ -370,6 +418,9 @@ restart_rsyslog() {
         systemctl enable rsyslog
         log_message "rsyslog started and enabled"
     fi
+    
+    # Wait a moment for rsyslog to fully start
+    sleep 3
 }
 
 # Function to test configuration
@@ -377,13 +428,13 @@ test_configuration() {
     log_message "Testing configuration..."
     
     # Test rsyslog is listening
-    if netstat -tuln | grep -q ":$SYSLOG_PORT "; then
+    if netstat -tuln 2>/dev/null | grep -q ":$SYSLOG_PORT "; then
         log_message "SUCCESS: rsyslog is listening on port $SYSLOG_PORT"
     else
         log_message "ERROR: rsyslog is not listening on port $SYSLOG_PORT"
     fi
     
-    if netstat -tuln | grep -q ":$ERRPT_PORT "; then
+    if netstat -tuln 2>/dev/null | grep -q ":$ERRPT_PORT "; then
         log_message "SUCCESS: rsyslog is listening on port $ERRPT_PORT"
     else
         log_message "ERROR: rsyslog is not listening on port $ERRPT_PORT"
@@ -394,6 +445,22 @@ test_configuration() {
         log_message "SUCCESS: Firewall allows port $SYSLOG_PORT"
     else
         log_message "WARNING: Firewall may not allow port $SYSLOG_PORT"
+    fi
+    
+    # Test if ports are accessible
+    if command -v nc >/dev/null 2>&1; then
+        log_message "Testing port accessibility..."
+        if timeout 5 bash -c "</dev/tcp/localhost/$SYSLOG_PORT" 2>/dev/null; then
+            log_message "SUCCESS: Port $SYSLOG_PORT is accessible"
+        else
+            log_message "WARNING: Port $SYSLOG_PORT may not be accessible"
+        fi
+        
+        if timeout 5 bash -c "</dev/tcp/localhost/$ERRPT_PORT" 2>/dev/null; then
+            log_message "SUCCESS: Port $ERRPT_PORT is accessible"
+        else
+            log_message "WARNING: Port $ERRPT_PORT may not be accessible"
+        fi
     fi
 }
 
@@ -406,6 +473,9 @@ main() {
         log_message "ERROR: This script must be run as root"
         exit 1
     fi
+    
+    # Check for port conflicts first
+    check_port_conflicts
     
     # Check and install rsyslog if needed
     check_rsyslog
