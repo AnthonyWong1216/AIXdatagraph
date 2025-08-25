@@ -13,8 +13,8 @@ log_message() {
 }
 
 # Configuration
-SYSLOG_PORT="514"
-ERRPT_PORT="515"
+SYSLOG_PORT="1514"  # Changed from 514 to avoid conflict with system rsyslog
+ERRPT_PORT="1515"   # Changed from 515 to avoid conflict
 LOG_DIR="/var/log/aix_logs"
 PROCESSED_DIR="/var/log/aix_processed"
 INFLUXDB_HOST="localhost"
@@ -56,6 +56,27 @@ test_netcat() {
     fi
 }
 
+# Function to check if ports are available
+check_ports() {
+    log_message "Checking if ports are available..."
+    
+    # Check if ports are already in use
+    if netstat -tuln 2>/dev/null | grep -q ":$SYSLOG_PORT "; then
+        log_message "ERROR: Port $SYSLOG_PORT is already in use"
+        log_message "Please free up port $SYSLOG_PORT or change SYSLOG_PORT in the script"
+        return 1
+    fi
+    
+    if netstat -tuln 2>/dev/null | grep -q ":$ERRPT_PORT "; then
+        log_message "ERROR: Port $ERRPT_PORT is already in use"
+        log_message "Please free up port $ERRPT_PORT or change ERRPT_PORT in the script"
+        return 1
+    fi
+    
+    log_message "SUCCESS: Ports $SYSLOG_PORT and $ERRPT_PORT are available"
+    return 0
+}
+
 # Function to start network listeners
 start_listeners() {
     log_message "Starting network listeners for AIX log data..."
@@ -63,6 +84,12 @@ start_listeners() {
     # Test netcat syntax first
     if ! test_netcat; then
         log_message "ERROR: Cannot start listeners - netcat not working"
+        return 1
+    fi
+    
+    # Check if ports are available
+    if ! check_ports; then
+        log_message "ERROR: Cannot start listeners - ports not available"
         return 1
     fi
     
@@ -285,6 +312,46 @@ process_logs() {
     fi
 }
 
+# Function to configure firewall
+configure_firewall() {
+    log_message "Configuring firewall for AIX log collection..."
+    
+    # Check if firewalld is running
+    if systemctl is-active --quiet firewalld; then
+        log_message "Configuring firewalld..."
+        
+        # Add ports to firewall
+        firewall-cmd --add-port="$SYSLOG_PORT"/tcp --permanent
+        firewall-cmd --add-port="$ERRPT_PORT"/tcp --permanent
+        
+        # Reload firewall
+        firewall-cmd --reload
+        
+        log_message "Firewall configured: TCP port $SYSLOG_PORT, TCP port $ERRPT_PORT"
+        
+    elif command -v iptables >/dev/null 2>&1; then
+        log_message "Configuring iptables..."
+        
+        # Add iptables rules
+        iptables -A INPUT -p tcp --dport "$SYSLOG_PORT" -j ACCEPT
+        iptables -A INPUT -p tcp --dport "$ERRPT_PORT" -j ACCEPT
+        
+        # Save iptables rules
+        if command -v iptables-save >/dev/null 2>&1; then
+            iptables-save > /etc/iptables/rules.v4 2>/dev/null || \
+            iptables-save > /etc/sysconfig/iptables 2>/dev/null || \
+            log_message "WARNING: Could not save iptables rules"
+        fi
+        
+        log_message "iptables configured: TCP port $SYSLOG_PORT, TCP port $ERRPT_PORT"
+        
+    else
+        log_message "WARNING: No firewall detected. Please configure manually:"
+        log_message "  - Allow TCP port $SYSLOG_PORT"
+        log_message "  - Allow TCP port $ERRPT_PORT"
+    fi
+}
+
 # Function to check InfluxDB connectivity
 check_influxdb() {
     log_message "Checking InfluxDB connectivity..."
@@ -360,6 +427,9 @@ main() {
     if ! check_influxdb; then
         log_message "WARNING: InfluxDB not available, data will not be stored in database"
     fi
+    
+    # Configure firewall
+    configure_firewall
     
     # Start listeners
     start_listeners

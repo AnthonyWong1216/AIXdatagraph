@@ -14,8 +14,8 @@ log_message() {
 
 # Configuration
 SERVER_IP="192.168.140.229"  # Change this to your Linux server IP
-SERVER_PORT="514"           # Default syslog port
-ERRPT_PORT="515"            # Custom port for errpt data
+SERVER_PORT="1514"          # Changed to avoid conflict with system rsyslog
+ERRPT_PORT="1515"           # Changed to avoid conflict
 LOG_DIR="/tmp/aix_logs"
 TEMP_DIR="/tmp/aix_temp"
 
