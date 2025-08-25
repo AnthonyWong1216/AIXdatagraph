@@ -75,19 +75,15 @@ else
     log_message "Services successfully removed."
 fi
 
-# Step 8: Remove downloaded RPMs
-log_message "Removing downloaded RPM files..."
-find / -name '*influxdb*.rpm' -o -name '*grafana*.rpm' -exec rm {} + 2>/dev/null || true
-
-# Step 9: Remove firewall rules
+# Step 8: Remove firewall rules
 log_message "Removing firewall rules for ports 3000 (Grafana) and 8086 (InfluxDB)..."
 firewall-cmd --remove-port=3000/tcp --permanent 2>/dev/null || true
 firewall-cmd --remove-port=8086/tcp --permanent 2>/dev/null || true
 firewall-cmd --reload 2>/dev/null || true
 
-# Step 10: Final verification
+# Step 9: Final verification
 log_message "Performing final verification..."
-if find / -name '*influxdb*' -o -name '*grafana*' | grep -q .; then
+if find / -name '*influxdb*' -o -name '*grafana*' | grep -q . | grep -v rpm; then
     log_message "WARNING: Some residual files may remain. Check output of 'find / -name *influxdb* -o -name *grafana*' for details."
 else
     log_message "No residual Grafana or InfluxDB files found."
